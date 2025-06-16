@@ -1,0 +1,44 @@
+# History files
+.Rhistory
+.Rapp.history
+
+# Session Data
+.RData
+.Renviron
+
+# User-specific files
+.Rproj.user/
+
+# R-Studio files
+.rs.restart
+
+# Knitr and R Markdown cache files
+_cache/
+/cache/
+*_cache/
+*.utf8.md
+*.knit.md
+
+# Shiny token files
+rsconnect/
+
+# renv dependency management library
+renv/
+.renv/
+
+# Package archives
+*.tar.gz
+*.zip
+
+# Compiled code
+*.o
+*.so
+*.dll
+
+# Output files
+output/
+shiny_app/data/ 
+models/
+
+# Thumbs.db
+Thumbs.db
