@@ -28,7 +28,6 @@ tryCatch(
       user = Sys.getenv("DB_USER"),
       password = Sys.getenv("DB_PASSWORD")
     )
-
     log_success("Conexión a la base de datos establecida correctamente.")
   },
   error = function(e) {
@@ -40,16 +39,12 @@ tryCatch(
 
 # --- 1. OBTENER ENLACES DE DESCARGA (WEB SCRAPING) ---
 tryCatch({
-  log_info("Estableciendo conexión con la base de datos PostgreSQL...")
-  db_conn <- DBI::dbConnect(
-    RPostgres::Postgres(),
-    host = Sys.getenv("DB_HOST"), port = Sys.getenv("DB_PORT"),
-    dbname = Sys.getenv("DB_NAME"), user = Sys.getenv("DB_USER"),
-    password = Sys.getenv("DB_PASSWORD")
-  )
-  log_success("Conexión a la base de datos establecida.")
+  # --- 1 OBTENER ESTADO ACTUAL DE LA BASE DE DATOS ---
+  log_info("Comprobando qué datos de mes/año ya existen en 'fact_mediciones'...")
+  query_existentes <- "SELECT DISTINCT EXTRACT(YEAR FROM fecha_hora) as ano, EXTRACT(MONTH FROM fecha_hora) as mes FROM fact_mediciones"
+  datos_existentes_dt <- setDT(dbGetQuery(db_conn, query_existentes))
+  log_info("Se encontraron {nrow(datos_existentes_dt)} combinaciones de mes/año ya cargadas.")
 
-  # --- 1. OBTENER ENLACES DE DESCARGA (WEB SCRAPING) ---
   portal_url <- "https://datos.madrid.es/portal/site/egob/menuitem.c05c1f754a33a9fbe4b2e4b284f1a5a0/?vgnextoid=f3c0f7d512273410VgnVCM2000000c205a0aRCRD"
   log_info("Haciendo scraping en la página del portal: {portal_url}")
 
@@ -69,30 +64,29 @@ tryCatch({
 
   # BUCLE EXTERIOR: Itera sobre cada fichero ZIP (un ZIP por año)
   for (url_fichero_zip in enlaces_absolutos) {
-    log_info("--- Procesando ZIP: {basename(url_fichero_zip)} ---")
-
-    temp_zip <- tempfile(fileext = ".zip")
+    # Creamos un directorio temporal único para este ZIP
+    temp_dir <- tempfile()
+    dir.create(temp_dir)
+    temp_zip_path <- file.path(temp_dir, "data.zip")
+    log_info("--- Procesando ZIP: {basename(url_fichero_zip)} en dir temporal: {temp_dir} ---")
 
     tryCatch({
-      # Descargar el ZIP a un fichero temporal
-      request(url_fichero_zip) |> req_perform(path = temp_zip)
+      request(url_fichero_zip) |> req_perform(path = temp_zip_path)
 
-      # Listar todos los ficheros DENTRO del ZIP
-      lista_ficheros_internos <- utils::unzip(temp_zip, list = TRUE)
+      # Descomprimimos TODOS los ficheros del ZIP dentro de su directorio temporal
+      utils::unzip(temp_zip_path, exdir = temp_dir)
 
-      # Filtrar para quedarnos solo con los ficheros .csv
-      ficheros_csv_en_zip <- lista_ficheros_internos$Name[grepl("\\.csv$", lista_ficheros_internos$Name, ignore.case = TRUE)]
-
-      log_info("Se encontraron {length(ficheros_csv_en_zip)} ficheros CSV dentro del ZIP.")
+      # Listamos solo los CSV dentro del directorio temporal
+      ficheros_csv <- list.files(temp_dir, pattern = "\\.csv$", recursive = TRUE, full.names = TRUE)
+      log_info("Se encontraron {length(ficheros_csv)} ficheros CSV dentro del ZIP.")
 
       # BUCLE INTERIOR: Itera sobre cada fichero CSV (un CSV por mes)
       for (fichero_csv_path in ficheros_csv_en_zip) {
         tryCatch(
           {
-            log_info("Procesando fichero mensual: {fichero_csv_path}")
+            log_info("Procesando fichero mensual: {basename(fichero_csv_path)}")
 
-            # Leer el CSV directamente desde el ZIP sin descomprimir todo
-            datos_crudos <- fread(unzip(temp_zip, files = fichero_csv_path))
+            datos_crudos <- fread(fichero_csv_path)
 
             # Lógica de transformación de ancho a largo (reutilizada)
             datos_largos <- melt(datos_crudos,
@@ -127,15 +121,16 @@ tryCatch({
             dbWriteTable(db_conn, "fact_mediciones", fact_mediciones_dt, append = TRUE)
           },
           error = function(e_mes) {
-            log_error("FALLO en el fichero mensual {fichero_csv_path}: {e_mes$message}")
+            log_error("FALLO en el fichero mensual {basename(fichero_csv_path)}: {e_mes$message}")
           }
         )
       } # Fin del bucle interior (meses)
     }, error = function(e_zip) {
       log_error("FALLO GRAVE al procesar el ZIP {basename(url_fichero_zip)}: {e_zip$message}")
     }, finally = {
-      # Limpiamos el fichero temporal del ZIP
-      unlink(temp_zip)
+      # Al final de cada ZIP, borramos el directorio temporal y todo su contenido
+      log_info("Limpiando directorio temporal: {temp_dir}")
+      unlink(temp_dir, recursive = TRUE)
     })
   } # Fin del bucle exterior (años)
 }, error = function(e_main) {
