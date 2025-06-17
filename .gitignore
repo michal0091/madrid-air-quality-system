@@ -30,6 +30,9 @@ renv/
 *.tar.gz
 *.zip
 
+# Logs
+*.log
+
 # Compiled code
 *.o
 *.so
