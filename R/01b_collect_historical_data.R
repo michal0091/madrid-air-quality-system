@@ -1,141 +1,154 @@
-# SCRIPT 01b: INGESTA MASIVA DE DATOS HISTÓRICOS
-# Objetivo: Descargar, procesar y cargar todos los ficheros de datos horarios históricos.
+# SCRIPT 01b: INGESTA MASIVA DE DATOS HISTÓRICOS (VERSIÓN FINAL)
+# --------------------------------------------------------------------
+# Realiza un scraping estructurado del portal de datos para obtener los enlaces
+# a los ficheros históricos. Procesa de forma incremental, cargando únicamente
+# los meses/años que no existan previamente en la base de datos.
+# Es idempotente a nivel mensual y gestiona la limpieza de ficheros temporales.
+# --------------------------------------------------------------------
 
+# --- 1. CARGA DE LIBRERÍAS Y ENTORNO ----
 renv::load()
 library(httr2)
-library(rvest) # Para web scraping
+library(rvest)
 library(data.table)
 library(lubridate)
+library(purrr)
 library(sf)
 library(DBI)
 library(RPostgres)
 library(logger)
 library(glue)
 
-# --- CONFIGURACIÓN (LOGGING Y BBDD) ---
-log_appender(appender_tee("logs/collect_data.log"))
-log_info("--- INICIO DEL PROCESO DE RECOLECCIÓN DE DATOS ---")
+# --- Carga de funciones auxiliares ---
+source("R/utils.R")
 
-tryCatch(
-  {
-    log_info("Estableciendo conexión con la base de datos PostgreSQL...")
 
-    db_conn <- DBI::dbConnect(
-      RPostgres::Postgres(),
-      host = Sys.getenv("DB_HOST"),
-      port = Sys.getenv("DB_PORT"),
-      dbname = Sys.getenv("DB_NAME"),
-      user = Sys.getenv("DB_USER"),
-      password = Sys.getenv("DB_PASSWORD")
-    )
-    log_success("Conexión a la base de datos establecida correctamente.")
-  },
-  error = function(e) {
-    log_error("No se pudo conectar a la base de datos.")
-    log_error(e$message)
-    stop("Error de conexión a la BBDD. Abortando script.")
-  }
-)
+# --- 2. CONFIGURACIÓN DE LOGGING ----
+log_appender(appender_tee(glue("logs/historical_load_{format(Sys.Date(), '%Y%m%d')}.log")))
+log_info("--- INICIO DEL PROCESO DE INGESTA HISTÓRICA ---")
 
-# --- 1. OBTENER ENLACES DE DESCARGA (WEB SCRAPING) ---
+
+# --- 3. SCRIPT PRINCIPAL DE EJECUCIÓN ---
 tryCatch({
-  # --- 1 OBTENER ESTADO ACTUAL DE LA BASE DE DATOS ---
+  log_info("Estableciendo conexión con la base de datos PostgreSQL...")
+  db_conn <- DBI::dbConnect(
+    RPostgres::Postgres(),
+    host = Sys.getenv("DB_HOST"), port = Sys.getenv("DB_PORT"),
+    dbname = Sys.getenv("DB_NAME"), user = Sys.getenv("DB_USER"),
+    password = Sys.getenv("DB_PASSWORD")
+  )
+  log_success("Conexión a la base de datos establecida.")
+
+  # OBTENER ESTADO ACTUAL DE LA BASE DE DATOS
   log_info("Comprobando qué datos de mes/año ya existen en 'fact_mediciones'...")
   query_existentes <- "SELECT DISTINCT EXTRACT(YEAR FROM fecha_hora) as ano, EXTRACT(MONTH FROM fecha_hora) as mes FROM fact_mediciones"
   datos_existentes_dt <- setDT(dbGetQuery(db_conn, query_existentes))
-  log_info("Se encontraron {nrow(datos_existentes_dt)} combinaciones de mes/año ya cargadas.")
-
+  if (nrow(datos_existentes_dt) > 0) {
+      log_info("Se encontraron {nrow(datos_existentes_dt)} combinaciones de mes/año ya cargadas.")
+  } else {
+      log_info("La tabla 'fact_mediciones' está vacía. Se procederá a cargar todos los datos.")
+  }
+  
+  # OBTENER FUENTES DE DATOS DISPONIBLES (SCRAPING)
   portal_url <- "https://datos.madrid.es/portal/site/egob/menuitem.c05c1f754a33a9fbe4b2e4b284f1a5a0/?vgnextoid=f3c0f7d512273410VgnVCM2000000c205a0aRCRD"
-  log_info("Haciendo scraping en la página del portal: {portal_url}")
-
+  log_info("Haciendo scraping ESTRUCTURADO en la página del portal: {portal_url}")
+  
   pagina_html <- read_html(portal_url)
-  enlaces_relativos <- pagina_html |>
-    html_elements("a[href$='.zip']") |>
-    html_attr("href")
-  enlaces_absolutos <- xml2::url_absolute(enlaces_relativos, portal_url)
+  nodos_descarga <- pagina_html |> html_elements(".asociada-list li.asociada-item")
+  
+  ficheros_historicos_dt <- map_dfr(nodos_descarga, function(nodo) {
+    ano_texto <- nodo |> html_element("p.info-title") |> html_text(trim = TRUE)
+    url_relativo <- nodo |> html_element("a") |> html_attr("href")
+    
+    if (!is.na(ano_texto) && !is.na(url_relativo) && nzchar(ano_texto)) {
+      data.frame(ano = as.integer(ano_texto), url = url_relativo)
+    } else {
+      NULL
+    }
+  })
+  
+  enlace_actual_rel <- pagina_html |> html_element("a[href*='calidad-aire-horario.csv']") |> html_attr("href")
+  
+  if (!is.na(enlace_actual_rel)) {
+    ficheros_a_procesar_dt <- rbindlist(
+      list(data.table(ano = year(today()), url = enlace_actual_rel), ficheros_historicos_dt),
+      use.names = TRUE, fill = TRUE
+    )
+  } else {
+    ficheros_a_procesar_dt <- setDT(ficheros_historicos_dt)
+  }
+  
+  ficheros_a_procesar_dt[, url := xml2::url_absolute(url, portal_url)]
+  ficheros_a_procesar_dt <- unique(ficheros_a_procesar_dt, by = "url")
+  
+  log_info("Se encontraron {nrow(ficheros_a_procesar_dt)} ficheros de datos únicos para procesar.")
 
-  log_info("Se encontraron {length(enlaces_absolutos)} ficheros ZIP anuales para descargar.")
+  # CARGAR TABLAS DE DIMENSIONES EN MEMORIA
+  log_info("Cargando tabla de dimensiones 'dim_estaciones' desde la BBDD...")
+  dim_estaciones <- st_read(db_conn, "dim_estaciones")
+  setDT(dim_estaciones)
+  
+  mapa_meses <- setNames(1:12, c("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"))
 
-  # --- 2. BUCLE ANIDADO DE DESCARGA, PROCESAMIENTO Y CARGA ---
-  log_info("Cargando tabla de dimensiones de estaciones desde la BBDD...")
-  log_info("Cargando tablas de dimensiones (estaciones, magnitudes) desde la BBDD...")
-  dim_estaciones <- setDT((st_read(db_conn, "dim_estaciones")))
-  dim_magnitudes <- setDT(dbReadTable(db_conn, "dim_magnitudes"))
-
-  # BUCLE EXTERIOR: Itera sobre cada fichero ZIP (un ZIP por año)
-  for (url_fichero_zip in enlaces_absolutos) {
-    # Creamos un directorio temporal único para este ZIP
-    temp_dir <- tempfile()
-    dir.create(temp_dir)
-    temp_zip_path <- file.path(temp_dir, "data.zip")
-    log_info("--- Procesando ZIP: {basename(url_fichero_zip)} en dir temporal: {temp_dir} ---")
-
-    tryCatch({
-      request(url_fichero_zip) |> req_perform(path = temp_zip_path)
-
-      # Descomprimimos TODOS los ficheros del ZIP dentro de su directorio temporal
-      utils::unzip(temp_zip_path, exdir = temp_dir)
-
-      # Listamos solo los CSV dentro del directorio temporal
-      ficheros_csv <- list.files(temp_dir, pattern = "\\.csv$", recursive = TRUE, full.names = TRUE)
-      log_info("Se encontraron {length(ficheros_csv)} ficheros CSV dentro del ZIP.")
-
-      # BUCLE INTERIOR: Itera sobre cada fichero CSV (un CSV por mes)
-      for (fichero_csv_path in ficheros_csv_en_zip) {
-        tryCatch(
-          {
-            log_info("Procesando fichero mensual: {basename(fichero_csv_path)}")
-
-            datos_crudos <- fread(fichero_csv_path)
-
-            # Lógica de transformación de ancho a largo (reutilizada)
-            datos_largos <- melt(datos_crudos,
-              id.vars = c("PROVINCIA", "MUNICIPIO", "ESTACION", "MAGNITUD", "PUNTO_MUESTREO", "ANO", "MES", "DIA"),
-              measure.vars = patterns("^H", "^V"),
-              variable.name = "hora_indice",
-              value.name = c("valor", "valido")
-            )
-
-            datos_largos <- datos_largos[valido == "V"]
-            datos_largos[, `:=`(
-              hora = as.integer(hora_indice) - 1,
-              valor = as.numeric(sub(",", ".", valor, fixed = TRUE))
-            )]
-            datos_largos[, fecha := make_datetime(ANO, MES, DIA, hora, tz = "Europe/Madrid")]
-
-            setnames(datos_largos, c("ESTACION", "MAGNITUD"), c("id_estacion", "id_magnitud"))
-
-            # Unimos con las dimensiones para obtener los IDs
-            datos_con_ids <- merge(datos_largos, dim_estaciones[, .(codigo_largo, id_estacion)], by = "id_estacion") # Solo para asegurar que existe
-            datos_con_ids <- merge(datos_con_ids, dim_magnitudes[, .(id_magnitud)], by = "id_magnitud")
-
-            # Creamos la tabla final de hechos, limpia y con IDs
-            fact_mediciones_dt <- datos_con_ids[, .(
-              id_estacion, # La clave de la estación
-              id_magnitud, # La clave de la magnitud
-              fecha_hora = fecha,
-              valor_medido = valor
-            )]
-
-            # Escribimos LA TABLA DE HECHOS en la base de datos
-            dbWriteTable(db_conn, "fact_mediciones", fact_mediciones_dt, append = TRUE)
-          },
-          error = function(e_mes) {
-            log_error("FALLO en el fichero mensual {basename(fichero_csv_path)}: {e_mes$message}")
+  # BUCLE PRINCIPAL DE PROCESAMIENTO
+  for (i in 1:nrow(ficheros_a_procesar_dt)) {
+    ano_actual_fichero <- ficheros_a_procesar_dt$ano[i]
+    url_fichero <- ficheros_a_procesar_dt$url[i]
+    
+    if (grepl("\\.zip$", url_fichero, ignore.case = TRUE)) {
+      temp_dir <- tempfile()
+      dir.create(temp_dir)
+      temp_zip_path <- file.path(temp_dir, "data.zip")
+      log_info("--- Procesando ZIP del año {ano_actual_fichero}: {basename(url_fichero)} ---")
+      
+      tryCatch({
+        request(url_fichero) |> req_perform(path = temp_zip_path)
+        utils::unzip(temp_zip_path, exdir = temp_dir)
+        ficheros_csv <- list.files(temp_dir, pattern = "\\.csv$", recursive = TRUE, full.names = TRUE)
+        
+        for (fichero_csv_path in ficheros_csv) {
+          mes_actual_abr <- sub("_mo\\d{2}\\.csv$", "", basename(fichero_csv_path))
+          mes_actual_num <- mapa_meses[mes_actual_abr]
+          
+          if (nrow(datos_existentes_dt[ano == ano_actual_fichero & mes == mes_actual_num]) > 0) {
+            log_info("OMITIENDO: {mes_actual_abr}/{ano_actual_fichero} ya existe.")
+            next
           }
-        )
-      } # Fin del bucle interior (meses)
-    }, error = function(e_zip) {
-      log_error("FALLO GRAVE al procesar el ZIP {basename(url_fichero_zip)}: {e_zip$message}")
-    }, finally = {
-      # Al final de cada ZIP, borramos el directorio temporal y todo su contenido
-      log_info("Limpiando directorio temporal: {temp_dir}")
-      unlink(temp_dir, recursive = TRUE)
-    })
-  } # Fin del bucle exterior (años)
+          
+          log_info("PROCESANDO: {mes_actual_abr}/{ano_actual_fichero}...")
+          dbExecute(db_conn, glue("DELETE FROM fact_mediciones WHERE EXTRACT(YEAR FROM fecha_hora) = {ano_actual_fichero} AND EXTRACT(MONTH FROM fecha_hora) = {mes_actual_num};"))
+          procesar_y_cargar_lote(fread(fichero_csv_path), db_conn, dim_estaciones)
+        }
+      }, error = function(e) {log_error("Fallo procesando ZIP {basename(url_fichero)}: {e$message}")},
+         finally = {unlink(temp_dir, recursive = TRUE)})
+         
+    } else if (grepl("\\.csv$", url_fichero, ignore.case = TRUE)) {
+      log_info("--- Procesando CSV único: {basename(url_fichero)} ---")
+      tryCatch({
+        datos_crudos <- fread(url_fichero, sep = ";", dec = ",", encoding = "UTF-8")
+        if (nrow(datos_crudos) == 0) {log_warn("El CSV está vacío."); next}
+        
+        # Para un CSV de año en curso, puede contener varios meses. Los procesamos todos.
+        meses_en_fichero <- unique(datos_crudos$MES)
+        for (mes_del_fichero in meses_en_fichero) {
+          
+          if (nrow(datos_existentes_dt[ano == ano_actual_fichero & mes == mes_del_fichero]) > 0) {
+            log_info("OMITIENDO: Mes {mes_del_fichero}/{ano_actual_fichero} ya existe.")
+            next
+          }
+          log_info("PROCESANDO: Mes {mes_del_fichero}/{ano_actual_fichero}...")
+          dbExecute(db_conn, glue("DELETE FROM fact_mediciones WHERE EXTRACT(YEAR FROM fecha_hora) = {ano_actual_fichero} AND EXTRACT(MONTH FROM fecha_hora) = {mes_del_fichero};"))
+          procesar_y_cargar_lote(datos_crudos[MES == mes_del_fichero], db_conn, dim_estaciones)
+        }
+      }, error = function(e) {log_error("Fallo procesando CSV directo {basename(url_fichero)}: {e$message}")})
+    }
+  }
+
 }, error = function(e_main) {
   log_error("Error fatal en el script: {e_main$message}")
 }, finally = {
   log_info("--- PROCESO DE INGESTA HISTÓRICA COMPLETADO ---")
-  if (exists("db_conn")) DBI::dbDisconnect(db_conn)
+  if (exists("db_conn") && R6::is.R6(db_conn) && dbIsValid(db_conn)) {
+    DBI::dbDisconnect(db_conn)
+  }
 })
