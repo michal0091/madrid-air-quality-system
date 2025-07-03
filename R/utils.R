@@ -4,13 +4,46 @@
 # diferentes scripts del proyecto.
 # --------------------------------------------------------------------
 
-#' Procesa un lote de datos crudos, los transforma y los carga en la BBDD
+#' Procesa un lote de datos crudos de calidad del aire, los transforma y los carga en la BBDD
+#'
+#' Esta función toma datos de calidad del aire en formato ancho (con columnas H01-H24 para valores
+#' y V01-V24 para validación), los transforma a formato largo, filtra por validez, 
+#' enriquece con dimensiones de estaciones y carga los resultados en la tabla de hechos.
 #'
 #' @param datos_crudos Un data.table con los datos en formato ancho, leídos desde un CSV.
-#' @param db_conn Una conexión DBI activa a la base de datos PostgreSQL.
+#'   Debe contener las columnas: PROVINCIA, MUNICIPIO, ESTACION, MAGNITUD, PUNTO_MUESTREO,
+#'   ANO, MES, DIA, y columnas H01-H24 (valores) y V01-V24 (validación).
+#' @param db_conn Una conexión DBI activa a la base de datos PostgreSQL donde se cargarán los datos.
 #' @param dim_estaciones Un data.table con la tabla de dimensiones de las estaciones.
+#'   Debe contener al menos las columnas: id_estacion, codigo_largo.
 #'
-#' @return NULL (la función escribe en la BBDD como efecto secundario).
+#' @details
+#' La función realiza las siguientes operaciones:
+#' \itemize{
+#'   \item Transforma los datos de formato ancho a largo usando data.table::melt
+#'   \item Filtra solo las mediciones marcadas como válidas (V)
+#'   \item Convierte los valores a numérico, manejando comas decimales
+#'   \item Crea timestamps con zona horaria Europe/Madrid
+#'   \item Cruza con dimensiones de estaciones para obtener claves primarias
+#'   \item Carga los datos procesados en la tabla 'fact_mediciones'
+#' }
+#'
+#' @return NULL (invisible). La función escribe en la BBDD como efecto secundario.
+#'   En caso de error o datos vacíos, retorna NULL sin cargar datos.
+#'
+#' @examples
+#' \dontrun{
+#'   # Ejemplo de uso típico
+#'   datos <- fread("datos_raw.csv")
+#'   conn <- dbConnect(RPostgres::Postgres(), ...)
+#'   dim_est <- dbReadTable(conn, "dim_estaciones")
+#'   procesar_y_cargar_lote(datos, conn, dim_est)
+#' }
+#'
+#' @seealso \code{\link[data.table]{melt}} para la transformación de formato,
+#'   \code{\link[DBI]{dbWriteTable}} para la carga en base de datos
+#'
+#' @export
 procesar_y_cargar_lote <- function(datos_crudos, db_conn, dim_estaciones) {
   
   log_info("Iniciando procesamiento de {nrow(datos_crudos)} filas crudas...")
