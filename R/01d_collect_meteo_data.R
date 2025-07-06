@@ -245,7 +245,7 @@ tryCatch({
     COUNT(*) as total_registros,
     MIN(fecha) as fecha_min,
     MAX(fecha) as fecha_max,
-    AVG(temp_c) as temp_media,
+    AVG(temp_media_c) as temp_media,
     AVG(precipitacion_mm) as precip_media_diaria,
     COUNT(DISTINCT DATE(fecha)) as dias_unicos
   FROM fact_meteo_diaria
