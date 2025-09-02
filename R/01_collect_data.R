@@ -91,9 +91,45 @@ tryCatch({
 tryCatch({
   log_info("Procesando datos en formato ANCHO recibidos de la API...")
 
-  # Convertir el cuerpo de la respuesta JSON a un data.table
-  # La API devuelve los datos en una lista, accedemos al elemento 'datos'
-  air_quality_wide_dt <- setDT(raw_data$datos)
+  # Verificar la estructura de la respuesta de la API
+  log_info("Estructura de respuesta de la API:")
+  log_info(paste("Campos disponibles:", paste(names(raw_data), collapse = ", ")))
+  log_info(paste("Total de registros reportados:", raw_data$totalRecords))
+  log_info(paste("Registros en página:", raw_data$pageRecords))
+  
+  # Verificar si hay datos disponibles
+  if (raw_data$totalRecords == 0 || raw_data$pageRecords == 0) {
+    log_warn("La API no devolvió datos para la fecha solicitada.")
+    log_warn("Esto es común según la documentación - la API de tiempo real es inestable.")
+    log_info("Para obtener datos, considere usar el sistema de fallback en R/datos_realtime_fallback.R")
+    stop("No hay datos disponibles en la API para procesar.")
+  }
+  
+  # Verificar si existe el campo de datos esperado
+  if (!"datos" %in% names(raw_data)) {
+    # La estructura de la API puede ser diferente, buscar otros campos posibles
+    possible_data_fields <- c("data", "results", "records", "items")
+    data_field <- NULL
+    
+    for (field in possible_data_fields) {
+      if (field %in% names(raw_data)) {
+        data_field <- field
+        break
+      }
+    }
+    
+    if (is.null(data_field)) {
+      log_error("La API no contiene un campo de datos reconocido.")
+      log_error(paste("Campos disponibles:", paste(names(raw_data), collapse = ", ")))
+      stop("Estructura de API no reconocida.")
+    }
+    
+    log_info(paste("Usando campo de datos:", data_field))
+    air_quality_wide_dt <- setDT(raw_data[[data_field]])
+  } else {
+    # Usar el campo 'datos' como se esperaba originalmente
+    air_quality_wide_dt <- setDT(raw_data$datos)
+  }
 
   # Punto crítico de validación
   if (nrow(air_quality_wide_dt) == 0) {
