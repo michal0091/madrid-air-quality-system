@@ -67,8 +67,100 @@ generar_meteo_futuro <- function(horas_futuras = 40) {
   return(datos_meteo)
 }
 
+# 3b. FUNCIÓN PARA CREAR VARIABLES DERIVADAS PARA PREDICCIÓN ----
+crear_variables_derivadas_prediccion <- function(datos) {
+  log_info("Creando variables derivadas para predicción...")
+  
+  datos_enriquecidos <- datos %>%
+    mutate(
+      # Variables temporales avanzadas (igual que modelo entrenado)
+      año = year(fecha_hora),
+      mes = month(fecha_hora),
+      dia = day(fecha_hora),
+      dia_año = yday(fecha_hora),
+      dia_semana = wday(fecha_hora),
+      fin_semana = ifelse(dia_semana %in% c(1,7), 1, 0),
+      
+      periodo_dia = case_when(
+        hora >= 6 & hora < 12 ~ "Mañana",
+        hora >= 12 & hora < 18 ~ "Tarde", 
+        hora >= 18 & hora < 24 ~ "Noche",
+        TRUE ~ "Madrugada"
+      ),
+      estacion_año = case_when(
+        mes %in% c(12, 1, 2) ~ "Invierno",
+        mes %in% c(3, 4, 5) ~ "Primavera",
+        mes %in% c(6, 7, 8) ~ "Verano",
+        TRUE ~ "Otoño"
+      ),
+      
+      # Variables meteorológicas derivadas (críticas para R² alto)
+      temp_sq = temp_media_c^2,
+      temp_log = log(temp_media_c + 1),
+      temp_hum_ratio = temp_media_c / (humedad_media_pct + 1),
+      temp_hum_product = temp_media_c * humedad_media_pct / 100,
+      
+      # Componentes vectoriales del viento
+      viento_x = vel_viento_media_ms * cos(dir_viento_grados * pi/180),
+      viento_y = vel_viento_media_ms * sin(dir_viento_grados * pi/180),
+      viento_magnitud_sq = vel_viento_media_ms^2,
+      
+      # Variables de presión normalizadas
+      presion_anomalia = presion_maxima_hpa - 1013,
+      presion_norm = (presion_maxima_hpa - 1000) / 50,
+      
+      # Interacciones espaciales
+      lat_temp = lat * temp_media_c,
+      lon_hum = lon * humedad_media_pct,
+      distancia_centro = sqrt((lat - 40.42)^2 + (lon + 3.7)^2),
+      
+      # Variables adicionales que espera el modelo (del entrenamiento simulado)
+      temp_base = 15 + 12*sin((dia_año-80)*2*pi/365),  # Temperatura base estacional
+      temp_diurna = 8*sin((hora-6)*pi/12),              # Componente diurna
+      
+      # Variables específicas por contaminante (valores aproximados Madrid)
+      base_contaminante = case_when(
+        contaminante == "Dióxido de Nitrógeno" ~ 35,
+        contaminante == "Partículas < 10 µm" ~ 25,
+        contaminante == "Ozono" ~ 65,
+        TRUE ~ 30
+      ),
+      
+      factor_estacional = sin((dia_año-100)*2*pi/365),  # Factor estacional
+      factor_diurno = sin((hora-7)*pi/12),              # Factor diurno  
+      factor_tipo = 1.2,  # Asumir urbana (factor 1.2)
+      
+      # Variables categóricas como numéricas (igual que entrenamiento)
+      tipo_estacion = "Urbana",  # Asumir urbana para todas (simplificación)
+      tipo_num = case_when(
+        tipo_estacion == "Industrial" ~ 3,
+        tipo_estacion == "Urbana" ~ 2,
+        TRUE ~ 1
+      ),
+      periodo_num = case_when(
+        periodo_dia == "Mañana" ~ 1,
+        periodo_dia == "Tarde" ~ 2,
+        periodo_dia == "Noche" ~ 3,
+        TRUE ~ 4
+      ),
+      estacion_num = case_when(
+        estacion_año == "Primavera" ~ 1,
+        estacion_año == "Verano" ~ 2,
+        estacion_año == "Otoño" ~ 3,
+        TRUE ~ 4
+      )
+    ) %>%
+    # Remover columnas intermedias que no usa el modelo
+    select(-periodo_dia, -estacion_año, -tipo_estacion)
+  
+  n_variables <- ncol(datos_enriquecidos) - 1  # -1 por contaminante
+  log_info("Variables derivadas creadas: {n_variables} predictores totales")
+  
+  return(datos_enriquecidos)
+}
+
 # 4. FUNCIÓN PARA GENERAR PREDICCIONES POR ESTACIÓN ----
-generar_predicciones_estaciones <- function(datos_meteo, archivo_modelos = "models/modelos_caret_simple.rds") {
+generar_predicciones_estaciones <- function(datos_meteo, archivo_modelos = "models/modelos_caret_avanzados.rds") {
   
   log_info("Generando predicciones para estaciones de Madrid...")
   
@@ -78,7 +170,8 @@ generar_predicciones_estaciones <- function(datos_meteo, archivo_modelos = "mode
     return(NULL)
   }
   
-  modelos <- readRDS(archivo_modelos)
+  modelos_completos <- readRDS(archivo_modelos)
+  modelos <- modelos_completos$modelos  # Extraer solo los modelos
   log_info("Modelos cargados: {length(modelos)} contaminantes")
   
   # Coordenadas de estaciones principales de Madrid
@@ -106,7 +199,9 @@ generar_predicciones_estaciones <- function(datos_meteo, archivo_modelos = "mode
     # Unir con datos meteorológicos
     left_join(datos_meteo, by = "fecha_hora") %>%
     # Unir con información de estaciones
-    left_join(estaciones, by = "id_estacion")
+    left_join(estaciones, by = "id_estacion") %>%
+    # Crear variables derivadas que espera el modelo avanzado
+    crear_variables_derivadas_prediccion()
   
   log_info("Combinaciones creadas: {nrow(combinaciones)} registros")
   log_info("  {nrow(datos_meteo)} horas × {nrow(estaciones)} estaciones × {length(modelos)} contaminantes")
@@ -133,8 +228,8 @@ generar_predicciones_estaciones <- function(datos_meteo, archivo_modelos = "mode
       datos_con_predicciones <- datos_contaminante %>%
         mutate(
           prediccion = predicciones,
-          rmse_modelo = modelo_info$rmse,
-          r2_modelo = modelo_info$rsquared
+          rmse_modelo = modelo_info$metricas$RMSE,
+          r2_modelo = modelo_info$metricas$Rsquared
         )
       
       predicciones_finales[[contaminante_nombre]] <- datos_con_predicciones
