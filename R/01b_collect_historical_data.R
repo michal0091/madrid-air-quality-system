@@ -1,4 +1,4 @@
-# SCRIPT 01b: INGESTA MASIVA DE DATOS HISTÓRICOS (VERSIÓN FINAL)
+# SCRIPT 01b: INGESTA MASIVA DE DATOS HISTÓRICOS 
 # --------------------------------------------------------------------
 # Realiza un scraping estructurado del portal de datos para obtener los enlaces
 # a los ficheros históricos. Procesa de forma incremental, cargando únicamente

@@ -66,9 +66,7 @@ verificar_trimestres_existentes <- function(db_conn, id_estacion) {
 obtener_estaciones_madrid <- function() {
   estaciones_madrid <- list(
     list(id = "3195", nombre = "Madrid-Retiro"),
-    list(id = "3129", nombre = "Madrid-Barajas"),
-    list(id = "3194U", nombre = "Madrid-Cuatro Vientos"),
-    list(id = "3196", nombre = "Madrid-Ciudad Universitaria")
+    list(id = "3129", nombre = "Madrid-Barajas")
   )
   
   log_success("Configuradas {length(estaciones_madrid)} estaciones principales de Madrid")
@@ -188,6 +186,7 @@ tryCatch({
     trimestre_actual <- paste0(year(Sys.Date()), "-Q", ceiling(month(Sys.Date()) / 3))
     trimestres_necesarios <- trimestres_necesarios[trimestres_necesarios <= trimestre_actual]
     
+    trimestres_necesarios <- trimestre_actual
     if (length(trimestres_necesarios) == 0) {
       log_info("Todos los trimestres históricos ya están descargados para {estacion_nombre}")
       next
