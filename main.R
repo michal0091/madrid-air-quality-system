@@ -17,10 +17,10 @@ log_info("=== INICIO PIPELINE MAESTRO - {Sys.time()} ===")
 # Parámetros globales
 FORZAR_SETUP <- FALSE           # Recrear tablas dimensión
 CARGAR_HISTORICOS <- FALSE      # Cargar datos históricos (proceso intensivo)
-CREAR_MODELOS <- TRUE           # Entrenar modelos ML (proceso intensivo)
+CREAR_MODELOS <- FALSE          # Entrenar modelos ML (proceso intensivo)
 EJECUTAR_PREDICCIONES <- TRUE   # Generar predicciones actuales
-USAR_FALLBACK <- TRUE           # Usar datos simulados si APIs fallan
-LANZAR_DASHBOARD <- FALSE       # Ejecutar dashboard Shiny
+USAR_FALLBACK <- FALSE          # Usar datos simulados si APIs fallan
+LANZAR_DASHBOARD <- TRUE       # Ejecutar dashboard Shiny
 
 # FUNCIONES AUXILIARES ====
 
@@ -140,7 +140,7 @@ main <- function() {
   
   # Verificar outputs generados
   outputs <- c(
-    "models/modelos_espaciales.rds" = "Modelos ML entrenados",
+    "models/modelos_caret_avanzados.rds" = "Modelos ML entrenados",
     "output/predicciones_40h_latest.rds" = "Predicciones temporales 40h",
     "output/meteo_40h_latest.rds" = "Datos meteorológicos 40h",
     "data/realtime/datos_prediccion_latest.rds" = "Datos tiempo real",
@@ -160,13 +160,16 @@ main <- function() {
 }
 
 # EJECUCIÓN ====
-# Solo ejecutar automáticamente si se invoca desde línea de comandos
+# Variables globales para tiempo
+inicio_global <- Sys.time()
+
+# Ejecutar automáticamente según configuración
 if(!interactive()) {
   # Script ejecutado desde línea de comandos
   args <- commandArgs(trailingOnly = TRUE)
   
   if(length(args) > 0) {
-    # Parsear argumentos
+    # Parsear argumentos de línea de comandos
     if("--setup" %in% args) FORZAR_SETUP <- TRUE
     if("--historicos" %in% args) CARGAR_HISTORICOS <- TRUE
     if("--modelos" %in% args) CREAR_MODELOS <- TRUE
@@ -175,14 +178,21 @@ if(!interactive()) {
     if("--no-fallback" %in% args) USAR_FALLBACK <- FALSE
   }
   
-  # Variables globales
-  inicio_global <- Sys.time()
-  
-  # Ejecutar pipeline
+  # Ejecutar pipeline automáticamente
   main()
 } else {
-  # En modo interactivo, solo definir funciones
-  log_info("📋 main.R cargado en modo interactivo. Use main() para ejecutar pipeline.")
-  # Definir variable global para uso posterior
-  inicio_global <- Sys.time()
+  # En modo interactivo, ejecutar según parámetros globales configurados
+  log_info("📋 main.R cargado en modo interactivo")
+  
+  # Verificar si hay alguna fase activa
+  fases_activas <- c(FORZAR_SETUP, CARGAR_HISTORICOS, CREAR_MODELOS, 
+                    EJECUTAR_PREDICCIONES, LANZAR_DASHBOARD)
+  
+  if(any(fases_activas)) {
+    log_info("⚡ Ejecutando pipeline automáticamente según configuración...")
+    main()
+  } else {
+    log_info("💤 Todas las fases desactivadas. Use main() para ejecutar manualmente.")
+    log_info("💡 O modifique los parámetros globales y vuelva a cargar el script.")
+  }
 }
