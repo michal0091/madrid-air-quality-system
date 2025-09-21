@@ -3,7 +3,7 @@ name: Real-time Air Quality Predictions
 on:
   schedule:
     # Ejecutar cada hora en minuto 15
-    - cron: '15 * * * *'
+   # - cron: '15 * * * *'
   workflow_dispatch:
     # Permitir ejecución manual
   push:
@@ -197,4 +197,5 @@ jobs:
         else
           echo "❌ Pipeline de predicciones falló"
           echo "🔗 Ver detalles en: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
         fi
