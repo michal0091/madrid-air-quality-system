@@ -63,12 +63,12 @@ jobs:
     - name: Download latest trained model
       run: |
         # Descargar el modelo más reciente desde GitHub Releases
-        gh release download --pattern "modelos_espaciales*.rds" --dir models/ || echo "No model found, using existing"
+        gh release download --pattern "modelos_caret_avanzados*.rds" --dir models/ || echo "No model found, using existing"
 
         # Si hay múltiples modelos, usar el más reciente
-        if ls models/modelos_espaciales*.rds 1> /dev/null 2>&1; then
-          latest_model=$(ls -t models/modelos_espaciales*.rds | head -n1)
-          cp "$latest_model" models/modelos_espaciales.rds
+        if ls models/modelos_caret_avanzados*.rds 1> /dev/null 2>&1; then
+          latest_model=$(ls -t models/modelos_caret_avanzados*.rds | head -n1)
+          cp "$latest_model" models/modelos_caret_avanzados.rds
         fi
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -80,7 +80,7 @@ jobs:
 
     - name: Generate predictions
       run: |
-        Rscript R/03b_execute_predictions.R
+        Rscript R/03_prediccion_espacial.R
 
     - name: Log predictions for retrospective analysis
       run: |
