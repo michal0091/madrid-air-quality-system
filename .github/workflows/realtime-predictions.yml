@@ -2,8 +2,8 @@ name: Real-time Air Quality Predictions
 
 on:
   schedule:
-    # Ejecutar cada hora en minuto 15
-   # - cron: '15 * * * *'
+    # Ejecutar cada hora en minuto 15 (comentado por ahora)
+    # - cron: '15 * * * *'
   workflow_dispatch:
     # Permitir ejecución manual
   push:
