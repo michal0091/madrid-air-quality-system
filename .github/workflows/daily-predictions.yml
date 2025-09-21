@@ -49,19 +49,11 @@ jobs:
     - name: Install R dependencies
       run: |
         R -e "
-        # Instalar paquetes necesarios directamente
-        packages <- c(
-          'DBI', 'RPostgres', 'dplyr', 'lubridate', 'sf', 'logger',
-          'httr2', 'jsonlite', 'ggplot2', 'viridis', 'leaflet',
-          'plotly', 'shiny', 'shinydashboard', 'DT', 'rsconnect'
-        )
-
-        new_packages <- packages[!(packages %in% installed.packages()[,'Package'])]
-        if(length(new_packages)) {
-          install.packages(new_packages, repos='http://cran.rstudio.com/')
+        if (!requireNamespace('renv', quietly = TRUE)) {
+          install.packages('renv')
         }
-
-        cat('✅ Paquetes instalados correctamente\n')
+        renv::restore()
+        cat('✅ Dependencias renv restauradas correctamente\n')
         "
 
     - name: Download latest trained model
