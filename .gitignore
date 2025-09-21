@@ -33,6 +33,15 @@ output/
 data/realtime/
 data/test/
 
+# Generated images and maps
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.svg
+
 # Models (large trained models)
 models/
 !models/.gitkeep
