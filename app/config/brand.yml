@@ -1,0 +1,66 @@
+# Brand Configuration for Madrid Air Quality Dashboard
+# Based on Kinelytics brand guidelines
+
+logo:
+  images:
+    icon:
+      path: www/logos/kinelytics-header-icon-white.svg
+      alt: "Kinelytics logo"
+    header:
+      path: www/logos/kinelytic-header-logo.svg
+      alt: "Company name with logo"
+    header-white:
+      path: www/logos/kinelytic-header-logo-white.svg
+      alt: "Company name with logo in white"
+    full:
+      path: www/logos/kinelytics-full-logo.svg
+      alt: "Full Kinelytics logo with tagline"
+  small: icon
+  medium:
+    light: header
+    dark: header-white
+  large: full
+
+color:
+  palette:
+    black: "#142021"        # Negro principal (Texto)
+    white: "#f0f5ef"        # Blanco principal (Fondo)
+    blue-green: "#1f3a3d"   # Azul verdoso oscuro (Primario / Oscuro)
+    green: "#2c5e68"        # Verde azulado (Secundario / Info)
+    blue: "#507c8b"         # Azul suave (Info / Acento)
+    light: "#b8d6c6"        # Verde azulado claro (Claro / Acento suave)
+    red: "#d9534f"          # Rojo para 'danger' (Error, Alerta)
+    orange: "#f0ad4e"       # Naranja para 'warning' (Advertencia)
+    light-green: "#5cb85c"  # Verde claro para 'success' (Éxito)
+
+  # Mapeo semántico inspirado en Bootstrap
+  foreground: black         
+  background: white         
+  primary: blue-green       
+  secondary: green          
+  success: light-green      
+  info: blue                
+  warning: orange           
+  danger: red               
+  light: light              
+  dark: blue-green          
+  link: primary             
+
+typography:
+  fonts:
+    - family: Exo 2         
+      source: google     
+    - family: Fira Mono     
+      source: google
+
+  base:
+    family: Exo 2           
+    weight: 400             
+
+  headings:
+    family: Exo 2           
+    weight: 800
+
+  monospace:
+    family: Fira Mono       
+    weight: 400

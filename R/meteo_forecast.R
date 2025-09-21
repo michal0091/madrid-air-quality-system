@@ -221,10 +221,10 @@ generar_prediccion_fallback <- function(horas_prediccion = 48) {
                            cos(prediccion$direccion_viento_grados * pi/180)
   
   # Suavizar transiciones
-  prediccion$temperatura_c <- as.numeric(filter(prediccion$temperatura_c, 
-                                               rep(1/3, 3), sides = 2))
-  prediccion$humedad_relativa_pct <- as.numeric(filter(prediccion$humedad_relativa_pct, 
-                                                      rep(1/3, 3), sides = 2))
+  prediccion$temperatura_c <- as.numeric(stats::filter(prediccion$temperatura_c, 
+                                                       rep(1/3, 3), sides = 2))
+  prediccion$humedad_relativa_pct <- as.numeric(stats::filter(prediccion$humedad_relativa_pct, 
+                                                              rep(1/3, 3), sides = 2))
   
   # Remover NAs del filtrado
   prediccion <- prediccion[complete.cases(prediccion), ]
