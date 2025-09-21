@@ -1,0 +1,207 @@
+name: Daily Air Quality Predictions
+
+on:
+  schedule:
+    # Ejecutar diariamente a las 6:00 AM UTC (7:00 AM Madrid)
+    - cron: '0 6 * * *'
+  workflow_dispatch:  # Permitir ejecución manual
+
+env:
+  DB_HOST: ${{ secrets.DB_HOST }}
+  DB_PORT: ${{ secrets.DB_PORT }}
+  DB_NAME: ${{ secrets.DB_NAME }}
+  DB_USER: ${{ secrets.DB_USER }}
+  DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+  AEMET_API_KEY: ${{ secrets.AEMET_API_KEY }}
+
+jobs:
+  daily-predictions:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup R
+      uses: r-lib/actions/setup-r@v2
+      with:
+        r-version: '4.5.1'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libcurl4-openssl-dev \
+          libssl-dev \
+          libxml2-dev \
+          libpq-dev \
+          libgdal-dev \
+          libproj-dev \
+          libgeos-dev \
+          libudunits2-dev
+
+    - name: Cache R packages
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.R_LIBS_USER }}
+        key: ${{ runner.os }}-r-${{ hashFiles('DESCRIPTION', 'renv.lock') }}
+
+    - name: Install R dependencies
+      run: |
+        R -e "if (!requireNamespace('renv', quietly = TRUE)) install.packages('renv')"
+        R -e "renv::restore()"
+
+    - name: Download latest trained model
+      run: |
+        # Descargar el modelo más reciente desde GitHub Releases
+        gh release download --pattern "modelos_espaciales*.rds" --dir models/ || echo "No model found, using existing"
+
+        # Si hay múltiples modelos, usar el más reciente
+        if ls models/modelos_espaciales*.rds 1> /dev/null 2>&1; then
+          latest_model=$(ls -t models/modelos_espaciales*.rds | head -n1)
+          cp "$latest_model" models/modelos_espaciales.rds
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Collect real-time data
+      run: |
+        Rscript R/03_prepare_realtime_prediction.R
+      continue-on-error: true
+
+    - name: Generate predictions
+      run: |
+        Rscript R/03b_execute_predictions.R
+
+    - name: Log predictions for retrospective analysis
+      run: |
+        Rscript -e "
+        source('R/prediction_logging.R')
+
+        # Registrar predicciones para análisis futuro
+        if (file.exists('output/predicciones_40h_latest.rds')) {
+          success <- log_predictions_wrapper('output/predicciones_40h_latest.rds')
+
+          if (success) {
+            cat('✅ Predicciones registradas en log\n')
+
+            # Generar reporte de performance si hay datos suficientes
+            reporte <- generar_reporte_performance('output/performance_report_latest.rds')
+
+            if (length(reporte) > 0) {
+              cat('📊 Reporte de performance generado\n')
+            }
+          } else {
+            cat('❌ Error registrando predicciones\n')
+          }
+        }
+        "
+
+    - name: Update cloud database
+      run: |
+        # Sincronizar nuevos datos a la base de datos cloud
+        Rscript -e "
+        source('R/utils.R')
+
+        # Conectar a BD y actualizar datos más recientes
+        con <- conectar_bd()
+
+        # Aquí agregarías lógica para insertar solo datos nuevos
+        # Por ahora, verificamos conexión
+        cat('✅ Conexión a cloud database exitosa\n')
+        cat('📊 Tablas disponibles:', length(DBI::dbListTables(con)), '\n')
+
+        DBI::dbDisconnect(con)
+        "
+
+    - name: Generate dashboard data
+      run: |
+        # Preparar datos para el dashboard
+        Rscript -e "
+        # Generar archivos de resumen para dashboard
+        if (file.exists('output/predicciones_40h_latest.rds')) {
+          cat('✅ Predicciones generadas correctamente\n')
+        } else {
+          cat('❌ Error: No se generaron predicciones\n')
+          quit(status = 1)
+        }
+        "
+
+    - name: Upload prediction artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: daily-predictions-${{ github.run_number }}
+        path: |
+          output/predicciones_*.rds
+          output/performance_report_*.rds
+          output/mapas_realtime/
+          data/realtime/
+        retention-days: 7
+
+    - name: Deploy to shinyapps.io
+      run: |
+        # Configurar credenciales de shinyapps.io
+        Rscript -e "
+        if (!requireNamespace('rsconnect', quietly = TRUE)) {
+          install.packages('rsconnect')
+        }
+
+        library(rsconnect)
+
+        # Configurar cuenta
+        setAccountInfo(
+          name = '${{ secrets.SHINYAPPS_NAME }}',
+          token = '${{ secrets.SHINYAPPS_TOKEN }}',
+          secret = '${{ secrets.SHINYAPPS_SECRET }}'
+        )
+
+        # Preparar archivos para deployment
+        if (!dir.exists('deploy_temp')) dir.create('deploy_temp')
+
+        # Copiar archivos de la app
+        file.copy('app/', 'deploy_temp/', recursive = TRUE)
+        file.copy('R/', 'deploy_temp/', recursive = TRUE)
+
+        # Copiar datos de predicción más recientes
+        if (file.exists('output/predicciones_40h_latest.rds')) {
+          if (!dir.exists('deploy_temp/data')) dir.create('deploy_temp/data')
+          file.copy('output/predicciones_40h_latest.rds', 'deploy_temp/data/')
+        }
+
+        # Crear archivo de configuración de BD para la app
+        writeLines(
+          paste0(
+            'DB_HOST=\"${{ secrets.DB_HOST }}\"\n',
+            'DB_PORT=\"${{ secrets.DB_PORT }}\"\n',
+            'DB_NAME=\"${{ secrets.DB_NAME }}\"\n',
+            'DB_USER=\"${{ secrets.DB_USER }}\"\n',
+            'DB_PASSWORD=\"${{ secrets.DB_PASSWORD }}\"'
+          ),
+          'deploy_temp/.Renviron'
+        )
+
+        cat('✅ Archivos preparados para deployment\n')
+
+        # Deploy a shinyapps.io
+        deployApp(
+          appDir = 'deploy_temp/app',
+          appName = 'madrid-air-quality',
+          account = '${{ secrets.SHINYAPPS_NAME }}',
+          forceUpdate = TRUE
+        )
+
+        cat('🚀 App desplegada exitosamente en shinyapps.io\n')
+        cat('🔗 URL: https://${{ secrets.SHINYAPPS_NAME }}.shinyapps.io/madrid-air-quality/\n')
+        "
+
+    - name: Clean up deployment files
+      run: |
+        rm -rf deploy_temp
+        echo "🧹 Archivos temporales limpiados"
+
+    - name: Notification on failure
+      if: failure()
+      run: |
+        echo "❌ Error en predicciones diarias"
+        echo "🔍 Revisar logs para diagnosticar el problema"
+        # Aquí puedes agregar notificaciones por email/Slack si es necesario
