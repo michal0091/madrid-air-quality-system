@@ -41,7 +41,7 @@ jobs:
           libudunits2-dev
 
     - name: Cache R packages
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ${{ env.R_LIBS_USER }}
         key: ${{ runner.os }}-r-${{ hashFiles('DESCRIPTION', 'renv.lock') }}
@@ -128,7 +128,7 @@ jobs:
         "
 
     - name: Upload prediction artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: daily-predictions-${{ github.run_number }}
         path: |
