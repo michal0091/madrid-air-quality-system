@@ -38,7 +38,11 @@ jobs:
           libgdal-dev \
           libproj-dev \
           libgeos-dev \
-          libudunits2-dev
+          libudunits2-dev \
+          libarchive-dev \
+          cmake \
+          pandoc \
+          gdal-bin
 
     - name: Cache R packages
       uses: actions/cache@v4
