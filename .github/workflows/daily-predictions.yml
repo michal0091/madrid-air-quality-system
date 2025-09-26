@@ -90,12 +90,18 @@ jobs:
 
     - name: Collect real-time data
       run: |
-        Rscript R/03_prepare_realtime_prediction.R
+        Rscript R/meteo_forecast.R || echo "AEMET forecast failed, continuing..."
+        Rscript -e "
+        source('R/datos_realtime_fallback.R', local = TRUE)
+        datos_actuales <- obtener_datos_tiempo_real(usar_fallback = TRUE)
+        saveRDS(datos_actuales, 'data/realtime/datos_prediccion_latest.rds')
+        cat('✅ Datos actuales preparados\n')
+        "
       continue-on-error: true
 
     - name: Generate predictions
       run: |
-        Rscript R/03_prediccion_espacial.R
+        Rscript R/05_predicciones_horarias.R
 
     - name: Log predictions for retrospective analysis
       run: |
