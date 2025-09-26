@@ -62,14 +62,17 @@ jobs:
 
     - name: Download latest trained model
       run: |
-        # Descargar el modelo más reciente desde GitHub Releases
-        gh release download --pattern "modelos_caret_avanzados*.rds" --dir models/ || echo "No model found, using existing"
+        # Limpiar modelos existentes y descargar el más reciente
+        rm -f models/modelos_caret_avanzados*.rds
+        gh release download --pattern "modelos_caret_avanzados*.rds" --dir models/ || echo "No model found, skipping download"
 
-        # Si hay múltiples modelos, usar el más reciente
-        if ls models/modelos_caret_avanzados*.rds 1> /dev/null 2>&1; then
-          latest_model=$(ls -t models/modelos_caret_avanzados*.rds | head -n1)
-          cp "$latest_model" models/modelos_caret_avanzados.rds
+        # Verificar que el modelo existe
+        if [ ! -f models/modelos_caret_avanzados.rds ]; then
+          echo "Error: No se pudo descargar el modelo"
+          exit 1
         fi
+
+        echo "✅ Modelo descargado correctamente"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
