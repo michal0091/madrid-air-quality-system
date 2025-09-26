@@ -53,11 +53,23 @@ jobs:
     - name: Install R dependencies
       run: |
         R -e "
-        if (!requireNamespace('renv', quietly = TRUE)) {
-          install.packages('renv')
+        # Instalar solo paquetes esenciales para predicciones
+        packages <- c(
+          'DBI', 'RPostgres', 'caret', 'randomForest', 'sf',
+          'dplyr', 'logger', 'httr2', 'jsonlite', 'lubridate',
+          'data.table', 'shiny', 'leaflet', 'plotly'
+        )
+
+        for(pkg in packages) {
+          if (!requireNamespace(pkg, quietly = TRUE)) {
+            install.packages(pkg)
+            cat('✅ Instalado:', pkg, '\n')
+          } else {
+            cat('⚡ Ya disponible:', pkg, '\n')
+          }
         }
-        renv::restore()
-        cat('✅ Dependencias renv restauradas correctamente\n')
+
+        cat('✅ Dependencias esenciales instaladas\n')
         "
 
     - name: Download latest trained model
