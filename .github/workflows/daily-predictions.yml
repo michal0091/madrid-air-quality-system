@@ -164,6 +164,9 @@ jobs:
 
     - name: Generate dashboard data
       run: |
+        # Crear todos los directorios que podrían necesitarse
+        mkdir -p app/www/mapas_horas app/www/horas app/www/logos output data/realtime logs models
+
         # Generar mapas e imágenes para el dashboard
         Rscript generar_mapas_por_hora.R || echo "Map generation failed, continuing..."
         Rscript generar_imagenes_por_hora.R || echo "Image generation failed, continuing..."
