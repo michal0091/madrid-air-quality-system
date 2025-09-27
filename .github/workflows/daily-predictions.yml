@@ -270,14 +270,47 @@ jobs:
         cat('🔗 URL: https://${{ secrets.SHINYAPPS_NAME }}.shinyapps.io/madrid-air-quality/\n')
         "
 
+    - name: Send success notification
+      if: success()
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: smtp.gmail.com
+        server_port: 587
+        username: ${{ secrets.GMAIL_USERNAME }}
+        password: ${{ secrets.GMAIL_APP_PASSWORD }}
+        subject: "✅ Predicciones diarias completadas - Madrid Air Quality"
+        body: |
+          Pipeline de predicciones ejecutado exitosamente.
+
+          🎯 Dashboard actualizado: https://${{ secrets.SHINYAPPS_NAME }}.shinyapps.io/madrid-air-quality/
+          📊 Workflow: ${{ github.workflow }}
+          🔄 Run: ${{ github.run_number }}
+
+          Próxima ejecución programada en 24 horas.
+        to: ${{ secrets.NOTIFICATION_EMAIL }}
+        from: Madrid Air Quality System
+
     - name: Clean up deployment files
       run: |
         rm -rf deploy_temp
         echo "🧹 Archivos temporales limpiados"
 
-    - name: Notification on failure
+    - name: Send email notification on failure
       if: failure()
-      run: |
-        echo "❌ Error en predicciones diarias"
-        echo "🔍 Revisar logs para diagnosticar el problema"
-        # Aquí puedes agregar notificaciones por email/Slack si es necesario
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: smtp.gmail.com
+        server_port: 587
+        username: ${{ secrets.GMAIL_USERNAME }}
+        password: ${{ secrets.GMAIL_APP_PASSWORD }}
+        subject: "❌ Error en predicciones diarias - Madrid Air Quality"
+        body: |
+          Ha ocurrido un error en el pipeline de predicciones diarias.
+
+          Workflow: ${{ github.workflow }}
+          Run: ${{ github.run_number }}
+          Commit: ${{ github.sha }}
+
+          Revisar logs en: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        to: ${{ secrets.NOTIFICATION_EMAIL }}
+        from: Madrid Air Quality System
