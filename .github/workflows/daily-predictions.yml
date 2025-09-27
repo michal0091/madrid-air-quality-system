@@ -101,6 +101,8 @@ jobs:
 
     - name: Generate predictions
       run: |
+        # Crear directorios necesarios
+        mkdir -p output data/realtime logs
         Rscript R/05_predicciones_horarias.R
 
     - name: Log predictions for retrospective analysis
