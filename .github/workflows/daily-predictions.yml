@@ -58,7 +58,10 @@ jobs:
           'DBI', 'RPostgres', 'caret', 'randomForest', 'sf',
           'dplyr', 'logger', 'httr2', 'jsonlite', 'lubridate',
           'data.table', 'shiny', 'leaflet', 'plotly', 'ggplot2',
-          'rsconnect'
+          'rsconnect', 'shinydashboard', 'DT', 'htmltools',
+          'shinycssloaders', 'tidyr', 'viridis', 'yaml',
+          'ggrepel', 'purrr', 'tidyterra', 'mapSpain',
+          'gganimate', 'transformr'
         )
 
         for(pkg in packages) {
