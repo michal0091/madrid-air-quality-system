@@ -93,28 +93,8 @@
         "source": "CRAN"
       },
       {
-        "package": "tidyterra",
-        "version": "0.7.2",
-        "source": "CRAN"
-      },
-      {
         "package": "mapSpain",
         "version": "0.10.0",
-        "source": "CRAN"
-      },
-      {
-        "package": "gganimate",
-        "version": "1.0.10",
-        "source": "CRAN"
-      },
-      {
-        "package": "transformr",
-        "version": "0.1.5",
-        "source": "CRAN"
-      },
-      {
-        "package": "slippymath",
-        "version": "0.3.1",
         "source": "CRAN"
       }
     ]
