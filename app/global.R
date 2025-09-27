@@ -19,10 +19,11 @@ library(jsonlite)
 library(yaml)
 library(ggrepel)
 library(purrr)
-library(tidyterra)
-library(mapSpain)
-library(gganimate)
-library(transformr)
+# Comentados temporalmente por problemas de dependencias en shinyapps.io
+# library(tidyterra)
+# library(mapSpain)
+# library(gganimate)
+# library(transformr)
 
 # CARGAR FUNCIONES AUXILIARES ----
 # source("R/data_utils.R")           # TODO: crear si es necesario
