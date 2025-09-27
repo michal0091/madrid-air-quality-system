@@ -8,8 +8,23 @@ server <- function(input, output, session) {
   # Cargar datos de predicciones
   datos_predicciones <- reactive({
     tryCatch({
-      if(file.exists("../output/predicciones_40h_latest.rds")) {
-        datos <- readRDS("../output/predicciones_40h_latest.rds")
+      # Buscar archivo en múltiples ubicaciones posibles
+      archivo_predicciones <- NULL
+      rutas_posibles <- c(
+        "data/predicciones_40h_latest.rds",
+        "../output/predicciones_40h_latest.rds",
+        "output/predicciones_40h_latest.rds"
+      )
+
+      for(ruta in rutas_posibles) {
+        if(file.exists(ruta)) {
+          archivo_predicciones <- ruta
+          break
+        }
+      }
+
+      if(!is.null(archivo_predicciones)) {
+        datos <- readRDS(archivo_predicciones)
         # Convertir geometry a coordenadas si es sf
         if("sf" %in% class(datos)) {
           coords <- st_coordinates(datos)
@@ -31,8 +46,18 @@ server <- function(input, output, session) {
   # Cargar datos meteorológicos
   datos_meteo <- reactive({
     tryCatch({
-      if(file.exists("../output/meteo_40h_latest.rds")) {
-        return(readRDS("../output/meteo_40h_latest.rds"))
+      # Buscar archivo meteorológico en múltiples ubicaciones
+      rutas_meteo <- c(
+        "data/meteo_40h_latest.rds",
+        "../output/meteo_40h_latest.rds",
+        "output/meteo_40h_latest.rds"
+      )
+
+      for(ruta in rutas_meteo) {
+        if(file.exists(ruta)) {
+          return(readRDS(ruta))
+        }
+      }
       }
       return(NULL)
     }, error = function(e) {
@@ -114,7 +139,10 @@ server <- function(input, output, session) {
   # Última actualización basada en timestamp de archivos
   output$ultima_actualizacion <- renderText({
     tryCatch({
-      archivos <- c("../output/predicciones_40h_latest.rds", "../output/meteo_40h_latest.rds")
+      archivos <- c(
+        "data/predicciones_40h_latest.rds", "data/meteo_40h_latest.rds",
+        "../output/predicciones_40h_latest.rds", "../output/meteo_40h_latest.rds"
+      )
       archivos_existentes <- archivos[file.exists(archivos)]
       
       if(length(archivos_existentes) > 0) {
