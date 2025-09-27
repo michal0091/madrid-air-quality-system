@@ -19,10 +19,10 @@ library(jsonlite)
 library(yaml)
 library(ggrepel)
 library(purrr)
-library(tidyterra)
+# library(tidyterra)  # Solo necesario para scripts de generación, no para Shiny
 library(mapSpain)
-library(gganimate)
-library(transformr)
+# library(gganimate)  # Solo necesario para scripts de generación, no para Shiny
+# library(transformr) # Solo necesario para scripts de generación, no para Shiny
 
 # CARGAR FUNCIONES AUXILIARES ----
 # source("R/data_utils.R")           # TODO: crear si es necesario
