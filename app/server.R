@@ -58,7 +58,6 @@ server <- function(input, output, session) {
           return(readRDS(ruta))
         }
       }
-      }
       return(NULL)
     }, error = function(e) {
       cat("Error cargando meteorología:", e$message, "\n")
