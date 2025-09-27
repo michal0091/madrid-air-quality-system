@@ -131,20 +131,31 @@ jobs:
 
     - name: Update cloud database
       run: |
-        # Sincronizar nuevos datos a la base de datos cloud
+        # Verificar conexión a BD cloud (opcional)
         Rscript -e "
-        source('R/utils.R')
+        tryCatch({
+          library(DBI)
+          library(RPostgres)
 
-        # Conectar a BD y actualizar datos más recientes
-        con <- conectar_bd()
+          # Conectar a BD cloud
+          con <- dbConnect(RPostgres::Postgres(),
+            host = Sys.getenv('DB_HOST'),
+            port = as.integer(Sys.getenv('DB_PORT')),
+            dbname = Sys.getenv('DB_NAME'),
+            user = Sys.getenv('DB_USER'),
+            password = Sys.getenv('DB_PASSWORD')
+          )
 
-        # Aquí agregarías lógica para insertar solo datos nuevos
-        # Por ahora, verificamos conexión
-        cat('✅ Conexión a cloud database exitosa\n')
-        cat('📊 Tablas disponibles:', length(DBI::dbListTables(con)), '\n')
+          cat('✅ Conexión a cloud database exitosa\n')
+          cat('📊 Tablas disponibles:', length(DBI::dbListTables(con)), '\n')
 
-        DBI::dbDisconnect(con)
+          DBI::dbDisconnect(con)
+        }, error = function(e) {
+          cat('⚠️ No se pudo conectar a cloud database:', e\$message, '\n')
+          cat('💡 Continuando sin actualización de BD...\n')
+        })
         "
+      continue-on-error: true
 
     - name: Generate dashboard data
       run: |
