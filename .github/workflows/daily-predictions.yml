@@ -61,7 +61,7 @@ jobs:
           'rsconnect', 'shinydashboard', 'DT', 'htmltools',
           'shinycssloaders', 'tidyr', 'viridis', 'yaml',
           'ggrepel', 'purrr', 'tidyterra', 'mapSpain',
-          'gganimate', 'transformr'
+          'gganimate', 'transformr', 'slippymath'
         )
 
         for(pkg in packages) {
