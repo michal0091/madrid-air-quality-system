@@ -230,8 +230,15 @@ for(contaminante in contaminantes) {
     "Ozono" = "o3"
   )
   
-  # Procesar primeras 10 horas (para coherencia con gráficos)
-  horas_procesar <- head(horas_unicas, 10)
+  # Seleccionar 10 horas estratégicas cada 4 horas para cubrir 40h totales
+  # Esto dará horas como: 06:00, 10:00, 14:00, 18:00, 22:00 (día 1), 02:00, 06:00, 10:00, 14:00, 18:00 (día 2)
+  indices_estrategicos <- seq(1, min(40, length(horas_unicas)), by = 4)[1:10]
+  horas_procesar <- horas_unicas[indices_estrategicos[!is.na(indices_estrategicos)]]
+
+  cat("📅 Horas estratégicas seleccionadas:\n")
+  for(i in seq_along(horas_procesar)) {
+    cat(sprintf("  %02d: %s\n", i, format(horas_procesar[i], "%Y-%m-%d %H:%M")))
+  }
   
   for(i in seq_along(horas_procesar)) {
     hora_actual <- horas_procesar[i]

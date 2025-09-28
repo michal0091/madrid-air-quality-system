@@ -151,7 +151,14 @@ for(contaminante in contaminantes) {
   )
   
   # Procesar primeras 10 horas (para no crear demasiados archivos)
-  horas_procesar <- head(horas_unicas, 10)
+  # Seleccionar 10 horas estratégicas cada 4 horas para cubrir 40h totales (igual que mapas)
+  indices_estrategicos <- seq(1, min(40, length(horas_unicas)), by = 4)[1:10]
+  horas_procesar <- horas_unicas[indices_estrategicos[!is.na(indices_estrategicos)]]
+
+  cat("📅 Horas estratégicas para gráficos:\n")
+  for(i in seq_along(horas_procesar)) {
+    cat(sprintf("  %02d: %s\n", i, format(horas_procesar[i], "%Y-%m-%d %H:%M")))
+  }
   
   for(i in seq_along(horas_procesar)) {
     hora_actual <- horas_procesar[i]
