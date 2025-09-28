@@ -243,15 +243,15 @@ jobs:
         file.copy('app/', 'deploy_temp/', recursive = TRUE)
         file.copy('R/', 'deploy_temp/', recursive = TRUE)
 
-        # Copiar datos de predicción más recientes
-        if (!dir.exists('deploy_temp/data')) dir.create('deploy_temp/data')
+        # Copiar datos de predicción más recientes al directorio app
+        if (!dir.exists('deploy_temp/app/data')) dir.create('deploy_temp/app/data')
 
         if (file.exists('output/predicciones_40h_latest.rds')) {
-          file.copy('output/predicciones_40h_latest.rds', 'deploy_temp/data/')
+          file.copy('output/predicciones_40h_latest.rds', 'deploy_temp/app/data/')
         }
 
         if (file.exists('output/meteo_40h_latest.rds')) {
-          file.copy('output/meteo_40h_latest.rds', 'deploy_temp/data/')
+          file.copy('output/meteo_40h_latest.rds', 'deploy_temp/app/data/')
         }
 
         # Crear archivo de configuración de BD para la app

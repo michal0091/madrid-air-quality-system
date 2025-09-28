@@ -409,9 +409,9 @@ server <- function(input, output, session) {
             tags$i(class = "fa fa-refresh"), " Reset"
           ),
           tags$span(
-            id = "hora-actual-mapa", 
+            id = "hora-actual-mapa",
             style = "margin-left: 15px; font-weight: bold; color: #1565c0;",
-            "Hora: 01/10"
+            "Hora: 06:00 (Día 1)"
           )
         )
       ),
@@ -431,11 +431,17 @@ server <- function(input, output, session) {
         function cambiarMapa() {
           const img = document.getElementById('mapa-animado');
           const contador = document.getElementById('hora-actual-mapa');
-          
+
+          // Horas estratégicas (cada 4h para cubrir 40h totales)
+          const horasEstrategicas = [
+            '06:00 (Día 1)', '10:00 (Día 1)', '14:00 (Día 1)', '18:00 (Día 1)', '22:00 (Día 1)',
+            '02:00 (Día 2)', '06:00 (Día 2)', '10:00 (Día 2)', '14:00 (Día 2)', '18:00 (Día 2)'
+          ];
+
           if (img && mapas[indiceActualMapa]) {
             img.src = mapas[indiceActualMapa];
-            contador.textContent = 'Hora: ' + String(indiceActualMapa + 1).padStart(2, '0') + '/10';
-            
+            contador.textContent = 'Hora: ' + horasEstrategicas[indiceActualMapa];
+
             indiceActualMapa = (indiceActualMapa + 1) % mapas.length;
           }
         }
