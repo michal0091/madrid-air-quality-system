@@ -178,6 +178,12 @@ jobs:
         Rscript generar_mapas_por_hora.R || echo "Map generation failed, continuing..."
         Rscript generar_imagenes_por_hora.R || echo "Image generation failed, continuing..."
 
+        # Copiar datos al directorio app para Shiny
+        echo "📦 Copiando datos al directorio app..."
+        mkdir -p app/data
+        cp output/predicciones_40h_latest.rds app/data/ || echo "Failed to copy predicciones"
+        cp output/meteo_40h_latest.rds app/data/ || echo "Failed to copy meteo"
+
         # Verificar archivos generados
         Rscript -e "
         # Verificar predicciones y archivos dashboard
