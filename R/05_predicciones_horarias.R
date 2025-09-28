@@ -84,27 +84,31 @@ obtener_meteo_aemet <- function(horas_futuras = 40) {
       datos_aemet <- readRDS("data/realtime/prediccion_meteo_latest.rds")
       log_info("✅ Datos AEMET cargados desde archivo: {nrow(datos_aemet)} registros")
 
-      # Ajustar fechas de AEMET al momento actual (para desarrollo)
-      inicio_hora <- floor_date(Sys.time(), "hour")
-      primera_fecha_aemet <- min(datos_aemet$fecha_hora)
-      diferencia_tiempo <- as.numeric(inicio_hora - primera_fecha_aemet, units = "hours")
+      # Filtrar datos AEMET desde la próxima hora (zona horaria Madrid)
+      hora_actual_madrid <- with_tz(Sys.time(), "Europe/Madrid")
+      hora_actual_madrid <- floor_date(hora_actual_madrid, "hour")
+      proxima_hora_madrid <- hora_actual_madrid + hours(1)
 
       datos_ajustados <- datos_aemet %>%
         mutate(
-          fecha_hora = fecha_hora + hours(diferencia_tiempo),
-          fecha = as.Date(fecha_hora),
+          fecha_hora = timestamp,
+          fecha = as.Date(timestamp),
+          hora = hour(timestamp),
+          dia_año = yday(timestamp),
           # Mapear nombres de columnas AEMET al formato esperado
           humedad_media_pct = humedad_relativa_pct,
           presion_maxima_hpa = presion_hpa,
-          vel_viento_media_ms = velocidad_viento_ms,
-          dir_viento_grados = direccion_viento_grados
+          vel_viento_media_ms = velocidad_viento_ms
+          # dir_viento_grados ya existe
         ) %>%
+        filter(timestamp >= proxima_hora_madrid) %>%
         slice_head(n = horas_futuras)
 
-      log_info("📅 Fechas AEMET ajustadas: {min(datos_ajustados$fecha_hora)} a {max(datos_ajustados$fecha_hora)}")
+      log_info("📅 Predicciones desde próxima hora Madrid: {min(datos_ajustados$fecha_hora)} a {max(datos_ajustados$fecha_hora)}")
+      log_info("⏰ Hora actual Madrid: {as.character(hora_actual_madrid)} → Próxima hora: {as.character(proxima_hora_madrid)}")
 
       if (nrow(datos_ajustados) >= horas_futuras * 0.8) {  # Al menos 80% de los datos
-        log_success("✅ Usando predicciones AEMET reales (fechas ajustadas)")
+        log_success("✅ Usando predicciones AEMET reales (fechas originales)")
         return(datos_ajustados)
       }
     }
