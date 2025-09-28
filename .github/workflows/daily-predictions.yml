@@ -53,16 +53,38 @@ jobs:
     - name: Install R dependencies
       run: |
         R -e "
-        # Instalar solo paquetes esenciales para predicciones
+        # Instalar paquetes esenciales para predicciones Y generación de mapas
         packages <- c(
           'DBI', 'RPostgres', 'caret', 'randomForest', 'sf',
           'dplyr', 'logger', 'httr2', 'jsonlite', 'lubridate',
           'data.table', 'shiny', 'leaflet', 'plotly', 'ggplot2',
           'rsconnect', 'shinydashboard', 'DT', 'htmltools',
           'shinycssloaders', 'tidyr', 'viridis', 'yaml',
-          'ggrepel', 'purrr', 'tidyterra', 'mapSpain',
-          'gganimate', 'transformr', 'slippymath'
+          'ggrepel', 'purrr', 'gganimate', 'transformr'
         )
+
+        # Paquetes adicionales para generación de mapas (con fallback si fallan)
+        optional_packages <- c('tidyterra', 'mapSpain', 'slippymath')
+
+        # Intentar instalar tidyterra desde CRAN (versión estable)
+        tryCatch({
+          if (!requireNamespace('tidyterra', quietly = TRUE)) {
+            install.packages('tidyterra')
+            cat('✅ tidyterra instalado desde CRAN\n')
+          }
+        }, error = function(e) {
+          cat('⚠️ No se pudo instalar tidyterra:', e$message, '\n')
+        })
+
+        # Intentar instalar slippymath
+        tryCatch({
+          if (!requireNamespace('slippymath', quietly = TRUE)) {
+            install.packages('slippymath')
+            cat('✅ slippymath instalado\n')
+          }
+        }, error = function(e) {
+          cat('⚠️ No se pudo instalar slippymath:', e$message, '\n')
+        })
 
         for(pkg in packages) {
           if (!requireNamespace(pkg, quietly = TRUE)) {
@@ -172,11 +194,43 @@ jobs:
 
         # Generar madrid_mask necesario para los mapas
         echo "🗺️ Generando madrid_mask para mapas..."
-        Rscript R/00_generar_madrid_mask.R || echo "Madrid mask generation failed, continuing..."
+        Rscript R/00_generar_madrid_mask.R
+
+        # Verificar que madrid_mask se generó correctamente
+        if [ ! -f "data/madrid_mask.rds" ]; then
+          echo "❌ Error: madrid_mask.rds no se generó"
+          echo "Creando madrid_mask básico de fallback..."
+          Rscript -e "
+          library(sf)
+          # Crear polígono básico de Madrid como fallback
+          madrid_bbox <- st_bbox(c(xmin = -4.6, ymin = 40.3, xmax = -3.4, ymax = 40.7), crs = 4326)
+          madrid_mask <- st_as_sfc(madrid_bbox)
+          dir.create('data', showWarnings = FALSE, recursive = TRUE)
+          saveRDS(madrid_mask, 'data/madrid_mask.rds')
+          cat('✅ Madrid mask básico creado\n')
+          "
+        fi
+
+        # Copiar madrid_mask a app/ para los scripts de mapas
+        cp data/madrid_mask.rds app/madrid_mask.rds
 
         # Generar mapas e imágenes para el dashboard
-        Rscript generar_mapas_por_hora.R || echo "Map generation failed, continuing..."
-        Rscript generar_imagenes_por_hora.R || echo "Image generation failed, continuing..."
+        echo "🗺️ Generando mapas por hora..."
+        if ! Rscript generar_mapas_por_hora.R; then
+          echo "❌ Error generando mapas por hora"
+          echo "Creando mapas de fallback..."
+          mkdir -p app/www/mapas_horas
+          # Copiar imagen de placeholder para evitar errores 404
+          echo "Mapas no disponibles" > app/www/mapas_horas/placeholder.txt
+        fi
+
+        echo "📊 Generando imágenes por hora..."
+        if ! Rscript generar_imagenes_por_hora.R; then
+          echo "❌ Error generando imágenes por hora"
+          echo "Creando imágenes de fallback..."
+          mkdir -p app/www/horas
+          echo "Imágenes no disponibles" > app/www/horas/placeholder.txt
+        fi
 
         # Copiar datos al directorio app para Shiny
         echo "📦 Copiando datos al directorio app..."
@@ -193,17 +247,47 @@ jobs:
           cat('❌ Error: No se generaron predicciones\n')
         }
 
-        # Verificar algunas imágenes clave
-        imagenes_test <- c(
+        # Verificar mapas animados y archivos dashboard
+        cat('=== VERIFICACIÓN ARCHIVOS DASHBOARD ===\n')
+
+        # Verificar mapas por hora (críticos para animación)
+        contaminantes <- c('no2', 'pm10', 'ozono')
+        mapas_encontrados <- 0
+        mapas_esperados <- 0
+
+        for(cont in contaminantes) {
+          for(hora in 1:10) {
+            mapas_esperados <- mapas_esperados + 1
+            archivo_mapa <- paste0('app/www/mapas_horas/mapa_', cont, '_hora_', sprintf('%02d', hora), '.png')
+            if(file.exists(archivo_mapa)) {
+              mapas_encontrados <- mapas_encontrados + 1
+            }
+          }
+        }
+
+        cat('📊 Mapas animados:', mapas_encontrados, 'de', mapas_esperados, 'generados\n')
+
+        if(mapas_encontrados == 0) {
+          cat('❌ ERROR CRÍTICO: No se generaron mapas animados\n')
+          cat('💡 La animación no funcionará en la web\n')
+        } else if(mapas_encontrados < mapas_esperados) {
+          cat('⚠️ ADVERTENCIA: Mapas incompletos, algunas horas no tendrán animación\n')
+        } else {
+          cat('✅ Todos los mapas animados generados correctamente\n')
+        }
+
+        # Verificar algunas imágenes específicas
+        imagenes_criticas <- c(
           'app/www/mapas_horas/mapa_no2_hora_01.png',
+          'app/www/mapas_horas/mapa_pm10_hora_01.png',
           'app/www/horas/no2_hora_01.png'
         )
 
-        for(img in imagenes_test) {
+        for(img in imagenes_criticas) {
           if(file.exists(img)) {
-            cat('✅', img, 'generada\n')
+            cat('✅ Imagen crítica:', basename(img), 'OK\n')
           } else {
-            cat('⚠️', img, 'no encontrada\n')
+            cat('❌ Imagen crítica FALTANTE:', basename(img), '\n')
           }
         }
         "
@@ -242,6 +326,15 @@ jobs:
         # Copiar archivos de la app
         file.copy('app/', 'deploy_temp/', recursive = TRUE)
         file.copy('R/', 'deploy_temp/', recursive = TRUE)
+
+        # Verificar que se copiaron los mapas animados
+        mapas_copiados <- length(list.files('deploy_temp/app/www/mapas_horas/', pattern = '*.png', recursive = TRUE))
+        cat('📊 Mapas copiados para deployment:', mapas_copiados, '\n')
+
+        if(mapas_copiados == 0) {
+          cat('⚠️ ADVERTENCIA: No se encontraron mapas PNG para deployment\n')
+          cat('💡 La animación no funcionará en shinyapps.io\n')
+        }
 
         # Copiar datos de predicción más recientes al directorio app
         if (!dir.exists('deploy_temp/app/data')) dir.create('deploy_temp/app/data')
