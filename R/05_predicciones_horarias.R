@@ -84,17 +84,28 @@ obtener_meteo_aemet <- function(horas_futuras = 40) {
       datos_aemet <- readRDS("data/realtime/prediccion_meteo_latest.rds")
       log_info("✅ Datos AEMET cargados desde archivo: {nrow(datos_aemet)} registros")
 
-      # Filtrar solo las horas que necesitamos
+      # Ajustar fechas de AEMET al momento actual (para desarrollo)
       inicio_hora <- floor_date(Sys.time(), "hour")
-      fin_hora <- inicio_hora + hours(horas_futuras)
+      primera_fecha_aemet <- min(datos_aemet$fecha_hora)
+      diferencia_tiempo <- as.numeric(inicio_hora - primera_fecha_aemet, units = "hours")
 
-      datos_filtrados <- datos_aemet %>%
-        filter(fecha_hora >= inicio_hora & fecha_hora <= fin_hora) %>%
+      datos_ajustados <- datos_aemet %>%
+        mutate(
+          fecha_hora = fecha_hora + hours(diferencia_tiempo),
+          fecha = as.Date(fecha_hora),
+          # Mapear nombres de columnas AEMET al formato esperado
+          humedad_media_pct = humedad_relativa_pct,
+          presion_maxima_hpa = presion_hpa,
+          vel_viento_media_ms = velocidad_viento_ms,
+          dir_viento_grados = direccion_viento_grados
+        ) %>%
         slice_head(n = horas_futuras)
 
-      if (nrow(datos_filtrados) >= horas_futuras * 0.8) {  # Al menos 80% de los datos
-        log_success("✅ Usando predicciones AEMET reales")
-        return(datos_filtrados)
+      log_info("📅 Fechas AEMET ajustadas: {min(datos_ajustados$fecha_hora)} a {max(datos_ajustados$fecha_hora)}")
+
+      if (nrow(datos_ajustados) >= horas_futuras * 0.8) {  # Al menos 80% de los datos
+        log_success("✅ Usando predicciones AEMET reales (fechas ajustadas)")
+        return(datos_ajustados)
       }
     }
 
