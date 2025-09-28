@@ -109,11 +109,11 @@ main <- function() {
   # FASE 4: PREDICCIONES TIEMPO REAL ----
   if(EJECUTAR_PREDICCIONES) {
     log_info("⏱️ === FASE 4: PREDICCIONES TIEMPO REAL ===")
-    
+
     # Obtener predicción meteorológica
-    ejecutar_script("R/meteo_forecast.R", 
+    ejecutar_script("R/meteo_forecast.R",
                    "Predicción meteorológica AEMET", obligatorio = FALSE)
-    
+
     # Recolectar datos actuales
     if(USAR_FALLBACK) {
       log_info("⚠️ Usando sistema fallback para datos actuales")
@@ -122,10 +122,28 @@ main <- function() {
       saveRDS(datos_actuales, "data/realtime/datos_prediccion_latest.rds")
       log_success("✅ Datos actuales preparados")
     }
-    
+
     # Generar predicciones temporales (consolida mapas y gráficos)
-    ejecutar_script("R/05_predicciones_horarias.R", 
+    ejecutar_script("R/05_predicciones_horarias.R",
                    "Predicciones horarias 40h", obligatorio = FALSE)
+
+    # Copiar datos al directorio app (como en GitHub Actions)
+    log_info("📦 Copiando datos al directorio app...")
+    if(!dir.exists("app/data")) dir.create("app/data", recursive = TRUE)
+
+    tryCatch({
+      if(file.exists("output/predicciones_40h_latest.rds")) {
+        file.copy("output/predicciones_40h_latest.rds", "app/data/", overwrite = TRUE)
+        log_info("✅ predicciones_40h_latest.rds copiado")
+      }
+      if(file.exists("output/meteo_40h_latest.rds")) {
+        file.copy("output/meteo_40h_latest.rds", "app/data/", overwrite = TRUE)
+        log_info("✅ meteo_40h_latest.rds copiado")
+      }
+      log_success("✅ Datos actualizados en directorio app")
+    }, error = function(e) {
+      log_warn("⚠️ Error copiando datos a app: {e$message}")
+    })
   }
   
   # FASE 5: DASHBOARD ----
