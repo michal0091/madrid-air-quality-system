@@ -151,9 +151,23 @@ COLORES_CALIDAD <- list(
 # madrid_b <- st_as_sfc(st_bbox(madrid))
 # madrid_mask <- esp_getTiles(madrid_b, type = "IGNBase.Todo", mask = TRUE, crop = TRUE, zoommin = 3)
 
-# Cargar madrid_mask pregenerado (si existe)
-if (file.exists("madrid_mask.rds")) {
-  madrid_mask <- readRDS("madrid_mask.rds")
-} else {
-  madrid_mask <- NULL
+# Cargar madrid_mask pregenerado (buscar en múltiples ubicaciones)
+rutas_madrid_mask <- c(
+  "app/madrid_mask.rds",
+  "data/madrid_mask.rds",
+  "../data/madrid_mask.rds",
+  "madrid_mask.rds"
+)
+
+madrid_mask <- NULL
+for (ruta in rutas_madrid_mask) {
+  if (file.exists(ruta)) {
+    madrid_mask <- readRDS(ruta)
+    cat("✅ madrid_mask cargado desde:", ruta, "\n")
+    break
+  }
+}
+
+if (is.null(madrid_mask)) {
+  cat("⚠️ madrid_mask no encontrado. Ejecutar R/00_generar_madrid_mask.R primero\n")
 }
