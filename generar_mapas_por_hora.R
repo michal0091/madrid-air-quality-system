@@ -5,8 +5,23 @@ library(ggplot2)
 library(dplyr)
 library(sf)
 library(lubridate)
-library(tidyterra)  # Necesario para geom_spatraster_rgb
-library(ggrepel)    # Necesario para geom_text_repel
+
+# Cargar paquetes opcionales con manejo de errores
+tryCatch({
+  library(tidyterra)
+  TIDYTERRA_AVAILABLE <- TRUE
+}, error = function(e) {
+  cat("⚠️ tidyterra no disponible, usando ggplot básico\n")
+  TIDYTERRA_AVAILABLE <- FALSE
+})
+
+tryCatch({
+  library(ggrepel)
+  GGREPEL_AVAILABLE <- TRUE
+}, error = function(e) {
+  cat("⚠️ ggrepel no disponible, usando geom_text básico\n")
+  GGREPEL_AVAILABLE <- FALSE
+})
 
 # Cargar configuración global (sin madrid_mask)
 source("app/global.R")
@@ -133,9 +148,22 @@ generar_mapa_hora <- function(datos_hora, contaminante, hora_actual) {
   }
   
   # Crear mapa con fondo de Madrid real
-  p <- ggplot() +
-    # Fondo de Madrid real
-    geom_spatraster_rgb(data = madrid_mask) 
+  p <- ggplot()
+
+  # Añadir fondo de Madrid si tidyterra está disponible
+  if(TIDYTERRA_AVAILABLE && exists("madrid_mask")) {
+    tryCatch({
+      p <- p + geom_spatraster_rgb(data = madrid_mask)
+    }, error = function(e) {
+      cat("⚠️ Error con geom_spatraster_rgb, usando fondo básico\n")
+      p <- p + geom_sf(data = st_as_sf(madrid_mask), fill = "lightgray", color = "white", alpha = 0.3)
+    })
+  } else {
+    # Fondo básico sin tidyterra
+    if(exists("madrid_mask")) {
+      p <- p + geom_sf(data = st_as_sf(madrid_mask), fill = "lightgray", color = "white", alpha = 0.3)
+    }
+  } 
 
   # Separar datos reales de puntos invisibles
   datos_reales <- datos_hora[datos_hora$prediccion > 0, ]
@@ -179,17 +207,30 @@ generar_mapa_hora <- function(datos_hora, contaminante, hora_actual) {
         keyheight = 1.2
       )
     ) +
-    # Etiquetas para estaciones más significativas
-    geom_text_repel(
+  # Añadir etiquetas según disponibilidad de ggrepel
+  if(GGREPEL_AVAILABLE) {
+    p <- p + geom_text_repel(
       data = datos_reales,
       aes(x = lon, y = lat,
         label = ifelse(prediccion > quantile(prediccion, 0.85, na.rm = TRUE) |
           prediccion < quantile(prediccion, 0.15, na.rm = TRUE),
         paste0(substr(nombre_estacion, 1, 8), "\n", round(prediccion, 1)), "")),
-      size = 3.5, max.overlaps = 6, force = 3, 
+      size = 3.5, max.overlaps = 6, force = 3,
       color = "white", fontface = "bold",
       bg.color = "black", bg.r = 0.3, alpha = 0.8
-    ) +
+    )
+  } else {
+    p <- p + geom_text(
+      data = datos_reales,
+      aes(x = lon, y = lat,
+        label = ifelse(prediccion > quantile(prediccion, 0.85, na.rm = TRUE) |
+          prediccion < quantile(prediccion, 0.15, na.rm = TRUE),
+        paste0(substr(nombre_estacion, 1, 8), "\n", round(prediccion, 1)), "")),
+      size = 3.5, color = "white", fontface = "bold"
+    )
+  }
+
+  p <- p +
     labs(
       title = paste("Predicción Madrid -", contaminante),
       subtitle = paste("Fecha:", format(hora_actual, "%d/%m/%Y %H:%M"), "| Modelo CARET Random Forest R² > 92%"),
