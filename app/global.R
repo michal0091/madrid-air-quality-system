@@ -20,8 +20,8 @@ library(yaml)
 library(ggrepel)
 library(purrr)
 # library(tidyterra)  # Solo necesario para scripts de generación, no para Shiny
-library(mapSpain)
-library(slippymath)
+# library(mapSpain)   # Solo necesario para scripts de generación, no para Shiny
+# library(slippymath) # Solo necesario para scripts de generación, no para Shiny
 # library(gganimate)  # Solo necesario para scripts de generación, no para Shiny
 # library(transformr) # Solo necesario para scripts de generación, no para Shiny
 
@@ -145,8 +145,15 @@ COLORES_CALIDAD <- list(
   unknown = "#95a5a6"     # Gris
 )
 
-# Tiles Madrid
-madrid <- esp_get_munic_siane(munic  = "^Madrid$")
-madrid_b <- st_buffer(madrid, dist = 10)
-madrid_b <- st_as_sfc(st_bbox(madrid))
-madrid_mask <- esp_getTiles(madrid_b, type = "IGNBase.Todo", mask = TRUE, crop = TRUE, zoommin = 3)
+# Tiles Madrid - COMENTADO: Causa OOM en shinyapps.io
+# madrid <- esp_get_munic_siane(munic  = "^Madrid$")
+# madrid_b <- st_buffer(madrid, dist = 10)
+# madrid_b <- st_as_sfc(st_bbox(madrid))
+# madrid_mask <- esp_getTiles(madrid_b, type = "IGNBase.Todo", mask = TRUE, crop = TRUE, zoommin = 3)
+
+# Cargar madrid_mask pregenerado (si existe)
+if (file.exists("madrid_mask.rds")) {
+  madrid_mask <- readRDS("madrid_mask.rds")
+} else {
+  madrid_mask <- NULL
+}
