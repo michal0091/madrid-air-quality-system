@@ -5,6 +5,8 @@ library(ggplot2)
 library(dplyr)
 library(sf)
 library(lubridate)
+library(tidyterra)  # Necesario para geom_spatraster_rgb
+library(ggrepel)    # Necesario para geom_text_repel
 
 # Cargar configuración global (sin madrid_mask)
 source("app/global.R")

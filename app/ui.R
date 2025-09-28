@@ -3,6 +3,9 @@
 
 ui <- dashboardPage(
   skin = "black",
+
+  # Window title (browser tab)
+  title = "Madrid Air Quality - Kinelytics",
   
   # Header
   dashboardHeader(
