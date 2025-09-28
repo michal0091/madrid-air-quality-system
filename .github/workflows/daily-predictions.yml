@@ -63,14 +63,29 @@ jobs:
           'ggrepel', 'purrr', 'gganimate', 'transformr'
         )
 
-        # Paquetes adicionales para generación de mapas (con fallback si fallan)
-        optional_packages <- c('tidyterra', 'mapSpain', 'slippymath')
+        # Paquetes adicionales para generación de mapas (CRÍTICOS)
+        map_packages <- c('tidyterra', 'mapSpain', 'slippymath')
+
+        # Instalar mapSpain (CRÍTICO para madrid_mask)
+        tryCatch({
+          if (!requireNamespace('mapSpain', quietly = TRUE)) {
+            install.packages('mapSpain')
+            cat('✅ mapSpain instalado - CRÍTICO para madrid_mask\n')
+          } else {
+            cat('⚡ mapSpain ya disponible\n')
+          }
+        }, error = function(e) {
+          cat('❌ ERROR CRÍTICO: No se pudo instalar mapSpain:', e$message, '\n')
+          cat('💡 madrid_mask no se podrá generar correctamente\n')
+        })
 
         # Intentar instalar tidyterra desde CRAN (versión estable)
         tryCatch({
           if (!requireNamespace('tidyterra', quietly = TRUE)) {
             install.packages('tidyterra')
             cat('✅ tidyterra instalado desde CRAN\n')
+          } else {
+            cat('⚡ tidyterra ya disponible\n')
           }
         }, error = function(e) {
           cat('⚠️ No se pudo instalar tidyterra:', e$message, '\n')
@@ -81,6 +96,8 @@ jobs:
           if (!requireNamespace('slippymath', quietly = TRUE)) {
             install.packages('slippymath')
             cat('✅ slippymath instalado\n')
+          } else {
+            cat('⚡ slippymath ya disponible\n')
           }
         }, error = function(e) {
           cat('⚠️ No se pudo instalar slippymath:', e$message, '\n')
