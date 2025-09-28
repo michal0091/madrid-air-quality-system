@@ -32,10 +32,16 @@ generar_meteo_futuro <- function(horas_futuras = 40) {
     dia_año = yday(horas_seq)
   ) %>%
     mutate(
-      # Patrón de temperatura diurno (máximo a las 15h, mínimo a las 6h)
-      temp_base = 25 + sin((dia_año - 200) * 2 * pi / 365) * 12, # Variación estacional
-      temp_diurna = sin((hora - 6) * pi / 12) * 8, # Variación diurna
-      temp_media_c = temp_base + temp_diurna + rnorm(n(), 0, 1),
+      # Patrón de temperatura realista para Madrid según época del año
+      mes = month(fecha_hora),
+      temp_base = case_when(
+        mes %in% c(12, 1, 2) ~ 8,   # Invierno: 8°C base
+        mes %in% c(3, 4, 5) ~ 18,   # Primavera: 18°C base
+        mes %in% c(6, 7, 8) ~ 28,   # Verano: 28°C base
+        mes %in% c(9, 10, 11) ~ 18  # Otoño: 18°C base
+      ),
+      temp_diurna = sin((hora - 6) * pi / 12) * 6, # Variación diurna reducida (±6°C)
+      temp_media_c = temp_base + temp_diurna + rnorm(n(), 0, 1.5),
       
       # Humedad inversa a temperatura
       humedad_media_pct = 70 - (temp_media_c - 20) * 1.5 + rnorm(n(), 0, 5),
@@ -65,6 +71,43 @@ generar_meteo_futuro <- function(horas_futuras = 40) {
   log_info("Rango temperaturas: {round(min(datos_meteo$temp_media_c), 1)}°C - {round(max(datos_meteo$temp_media_c), 1)}°C")
   
   return(datos_meteo)
+}
+
+# 3. FUNCIÓN PARA OBTENER DATOS METEOROLÓGICOS DE AEMET ----
+obtener_meteo_aemet <- function(horas_futuras = 40) {
+
+  log_info("Intentando obtener predicciones AEMET para próximas {horas_futuras} horas...")
+
+  tryCatch({
+    # Intentar cargar predicciones AEMET si existen
+    if (file.exists("data/realtime/prediccion_meteo_latest.rds")) {
+      datos_aemet <- readRDS("data/realtime/prediccion_meteo_latest.rds")
+      log_info("✅ Datos AEMET cargados desde archivo: {nrow(datos_aemet)} registros")
+
+      # Filtrar solo las horas que necesitamos
+      inicio_hora <- floor_date(Sys.time(), "hour")
+      fin_hora <- inicio_hora + hours(horas_futuras)
+
+      datos_filtrados <- datos_aemet %>%
+        filter(fecha_hora >= inicio_hora & fecha_hora <= fin_hora) %>%
+        slice_head(n = horas_futuras)
+
+      if (nrow(datos_filtrados) >= horas_futuras * 0.8) {  # Al menos 80% de los datos
+        log_success("✅ Usando predicciones AEMET reales")
+        return(datos_filtrados)
+      }
+    }
+
+    # Si no hay datos AEMET, usar fallback realista
+    log_warn("⚠️ Datos AEMET no disponibles, usando fallback realista")
+
+  }, error = function(e) {
+    log_error("❌ Error cargando AEMET: {e$message}")
+    log_warn("⚠️ Usando fallback realista")
+  })
+
+  # FALLBACK: Usar la función de generación existente (ya corregida con temperaturas realistas)
+  return(generar_meteo_futuro(horas_futuras))
 }
 
 # 3b. FUNCIÓN PARA CREAR VARIABLES DERIVADAS PARA PREDICCIÓN ----
@@ -265,8 +308,8 @@ generar_predicciones_40h <- function(horas = 40) {
   
   log_info("=== GENERANDO PREDICCIONES PRÓXIMAS {horas} HORAS ===")
   
-  # Paso 1: Generar datos meteorológicos futuros
-  datos_meteo <- generar_meteo_futuro(horas)
+  # Paso 1: Obtener datos meteorológicos de AEMET (con fallback)
+  datos_meteo <- obtener_meteo_aemet(horas)
   
   if(is.null(datos_meteo)) {
     log_error("No se pudieron generar datos meteorológicos")
