@@ -21,6 +21,7 @@ library(ggrepel)
 library(purrr)
 # library(tidyterra)  # Solo necesario para scripts de generación, no para Shiny
 library(mapSpain)
+library(slippymath)
 # library(gganimate)  # Solo necesario para scripts de generación, no para Shiny
 # library(transformr) # Solo necesario para scripts de generación, no para Shiny
 
