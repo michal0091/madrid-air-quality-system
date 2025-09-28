@@ -39,12 +39,14 @@ obtener_prediccion_aemet <- function(horas_prediccion = 48, usar_fallback = TRUE
   if(nchar(AEMET_API_KEY) == 0) {
     log_warn("AEMET_API_KEY no configurada")
     if(usar_fallback) {
-      log_info("Usando datos fallback meteorológicos")
+      log_info("🔄 Usando datos fallback meteorológicos realistas")
       return(generar_prediccion_fallback(horas_prediccion))
     } else {
       stop("API key requerida")
     }
   }
+
+  # API AEMET habilitada - usando datos reales
   
   # Intentar obtener datos de AEMET
   prediccion <- tryCatch({
@@ -59,8 +61,8 @@ obtener_prediccion_aemet <- function(horas_prediccion = 48, usar_fallback = TRUE
     }
   })
   
-  # Validar y procesar datos
-  prediccion_procesada <- procesar_prediccion_aemet(prediccion)
+  # Validar y procesar datos usando función específica para forecast
+  prediccion_procesada <- procesar_prediccion_aemet_forecast(prediccion)
   
   log_success("✅ Predicción meteorológica obtenida: {nrow(prediccion_procesada)} registros")
   return(prediccion_procesada)
@@ -106,61 +108,92 @@ obtener_datos_aemet_api <- function(horas_prediccion) {
     stop("Error descargando datos: ", resp_status(resp_datos))
   }
   
-  # Parsear JSON
-  datos_json <- resp_body_json(resp_datos)
-  
+  # Leer como texto y parsear JSON (formato forecast)
+  texto_datos <- resp_body_string(resp_datos)
+  datos_json <- fromJSON(texto_datos)
+
+  # DEBUG: Inspeccionar respuesta JSON
+  log_info("Tipo de respuesta JSON: {class(datos_json)}")
+  log_info("Longitud de respuesta: {length(datos_json)}")
+  if(is.list(datos_json) && length(datos_json) > 0) {
+    log_info("Nombres en respuesta JSON: {paste(names(datos_json), collapse=', ')}")
+    if(length(datos_json) >= 1 && is.list(datos_json[[1]])) {
+      log_info("Nombres en primer elemento: {paste(names(datos_json[[1]]), collapse=', ')}")
+    }
+  }
+
   log_info("✅ Datos AEMET descargados correctamente")
   return(datos_json)
 }
 
-#' Procesa datos crudos de AEMET a formato estándar
-procesar_prediccion_aemet <- function(datos_crudos) {
-  
-  log_info("Procesando datos AEMET...")
-  
-  # Extraer predicciones horarias
-  predicciones <- datos_crudos[[1]]$prediccion$dia
-  
+#' Procesa datos de forecast AEMET a formato estándar
+procesar_prediccion_aemet_forecast <- function(datos_crudos) {
+
+  log_info("Procesando datos AEMET forecast...")
+
+  # Verificar estructura para datos de forecast
+  if(!is.data.frame(datos_crudos) || nrow(datos_crudos) == 0) {
+    stop("Datos AEMET forecast vacíos o formato incorrecto")
+  }
+
+  if(!"prediccion" %in% names(datos_crudos)) {
+    stop("No se encontró 'prediccion' en la respuesta de AEMET forecast")
+  }
+
+  # Extraer predicciones por días - estructura específica de forecast
+  dias_data <- datos_crudos$prediccion$dia[[1]]
+
+  log_info("Procesando {nrow(dias_data)} días de predicción")
+
   resultado <- data.frame()
-  
-  for(dia in predicciones) {
+
+  for(i in 1:nrow(dias_data)) {
+    dia <- dias_data[i, ]
     fecha_dia <- as.Date(dia$fecha)
-    
-    # Variables horarias disponibles
-    variables <- c("temperatura", "sensTermica", "humedadRelativa", 
-                   "precipitacion", "vientoAndComponenteU", "vientoAndComponenteV",
-                   "dirViento10m", "viento10m")
-    
-    for(hora_idx in 1:length(dia$temperatura)) {
-      timestamp <- as.POSIXct(paste(fecha_dia, sprintf("%02d:00:00", hora_idx - 1)), 
+
+    # Extraer data.frames con valores horarios
+    temp_df <- dia$temperatura[[1]]
+    humid_df <- dia$humedadRelativa[[1]]
+    precip_df <- dia$precipitacion[[1]]
+
+    # Procesar cada hora disponible en los datos
+    n_horas <- nrow(temp_df)
+
+    for(h in 1:n_horas) {
+      # Obtener hora del período
+      hora_periodo <- as.numeric(temp_df$periodo[h])
+      timestamp <- as.POSIXct(paste(fecha_dia, sprintf("%02d:00:00", hora_periodo)),
                               tz = "Europe/Madrid")
-      
+
+      # Extraer valores numéricos
+      temp_val <- as.numeric(temp_df$value[h])
+      humid_val <- as.numeric(humid_df$value[h])
+      precip_val <- as.numeric(precip_df$value[h])
+
       fila <- data.frame(
         timestamp = timestamp,
         fecha = fecha_dia,
-        hora = hora_idx - 1,
-        temperatura_c = as.numeric(dia$temperatura[hora_idx]),
-        sensacion_termica_c = as.numeric(dia$sensTermica[hora_idx]),
-        humedad_relativa_pct = as.numeric(dia$humedadRelativa[hora_idx]),
-        precipitacion_mm = as.numeric(dia$precipitacion[hora_idx]),
-        viento_u_ms = as.numeric(dia$vientoAndComponenteU[hora_idx]),
-        viento_v_ms = as.numeric(dia$vientoAndComponenteV[hora_idx]),
-        direccion_viento_grados = as.numeric(dia$dirViento10m[hora_idx]),
-        velocidad_viento_ms = as.numeric(dia$viento10m[hora_idx]),
-        presion_hpa = 1013.25, # Valor por defecto si no disponible
+        hora = hora_periodo,
+        temperatura_c = temp_val,
+        sensacion_termica_c = temp_val, # Mismo valor que temperatura por simplicidad
+        humedad_relativa_pct = humid_val,
+        precipitacion_mm = ifelse(is.na(precip_val), 0, precip_val),
+        velocidad_viento_ms = 3, # Valor por defecto
+        direccion_viento_grados = 225, # SW dominante para Madrid
+        presion_hpa = 1013.25, # Valor estándar
         stringsAsFactors = FALSE
       )
-      
+
       resultado <- rbind(resultado, fila)
     }
   }
-  
+
   # Filtrar a horas solicitadas
   ahora <- Sys.time()
   limite <- ahora + hours(FORECAST_HOURS)
   resultado <- resultado[resultado$timestamp <= limite, ]
-  
-  log_info("Procesados {nrow(resultado)} registros horarios")
+
+  log_info("Procesados {nrow(resultado)} registros horarios forecast")
   return(resultado)
 }
 
