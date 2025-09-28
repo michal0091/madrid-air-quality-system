@@ -6,8 +6,29 @@ library(dplyr)
 library(sf)
 library(lubridate)
 
-# Cargar configuración global
+# Cargar configuración global (sin madrid_mask)
 source("app/global.R")
+
+# Cargar madrid_mask necesario para este script
+rutas_madrid_mask <- c(
+  "data/madrid_mask.rds",
+  "app/madrid_mask.rds",
+  "../data/madrid_mask.rds",
+  "madrid_mask.rds"
+)
+
+madrid_mask <- NULL
+for (ruta in rutas_madrid_mask) {
+  if (file.exists(ruta)) {
+    madrid_mask <- readRDS(ruta)
+    cat("✅ madrid_mask cargado desde:", ruta, "\n")
+    break
+  }
+}
+
+if (is.null(madrid_mask)) {
+  stop("❌ madrid_mask no encontrado. Ejecutar R/00_generar_madrid_mask.R primero")
+}
 
 cat("=== GENERADOR DE MAPAS POR HORA ===\n")
 
