@@ -91,11 +91,6 @@
         "package": "purrr",
         "version": "1.1.0",
         "source": "CRAN"
-      },
-      {
-        "package": "mapSpain",
-        "version": "0.10.0",
-        "source": "CRAN"
       }
     ]
   },
