@@ -27,8 +27,7 @@
 ```bash
 # En tu Raspberry Pi
 cd /home/pi/madrid-air-quality-system
-chmod +x scripts/backup_database.sh
-./scripts/backup_database.sh
+**Note**: Legacy backup scripts moved to `legacy-scripts` branch. Use current GitHub Actions deployment instead.
 
 # Descargar backup a tu PC
 scp pi@tu-pi:/home/pi/backups/madrid_air_quality_backup_*.sql.gz .
@@ -51,8 +50,7 @@ CLOUD_DB="neondb"
 export PGPASSWORD='tu-password-cloud'
 
 # Ejecutar restauración
-chmod +x scripts/restore_to_cloud.sh
-./scripts/restore_to_cloud.sh madrid_air_quality_backup_20241214_120000.sql.gz
+**Note**: Legacy restore scripts moved to `legacy-scripts` branch. Current system uses GitHub Actions for automated deployment.
 ```
 
 ## Paso 5: Actualizar Configuración
