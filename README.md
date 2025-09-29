@@ -20,7 +20,8 @@ Sistema completo de ingeniería de datos y machine learning para **análisis y p
 
 ### **Fase 1: Ingesta de Datos** 📥
 - **Históricos**: Web scraping portal Madrid (2015-2025) + AEMET meteorológicos
-- **Tiempo Real**: APIs Madrid + AEMET con sistema robusto de fallback
+- **Tiempo Real**: **APIs Reales Madrid** (19 estaciones, 10 contaminantes) + AEMET
+- **Fallback Inteligente**: Sistema automático en caso de fallos API
 - **Almacenamiento**: PostgreSQL con modelo estrella optimizado
 
 ### **Fase 2: Modelado Avanzado** 🤖
@@ -100,6 +101,7 @@ madrid-air-quality-system/
 │   ├── 🛠️ utils.R                         # Utilidades generales
 │   ├── 🌤️ utils_meteo_horario.R           # Expansión meteorológica
 │   ├── 📡 datos_realtime_fallback.R        # Sistema fallback APIs
+│   ├── 🌍 api_madrid_real.R               # ⭐ API Madrid tiempo real (NUEVO)
 │   └── 🌦️ meteo_forecast.R                # Predicciones AEMET
 ├── 📂 models/                               # Modelos entrenados
 │   ├── modelos_caret_avanzados.rds         # ⭐ Modelo principal (R²=0.929)
@@ -115,6 +117,8 @@ madrid-air-quality-system/
 ├── 📂 .github/workflows/                   # GitHub Actions
 │   └── predict-realtime.yml               # Automatización horaria
 ├── 📋 main.R                               # ⭐ Script maestro orquestador
+├── 🚀 run_local_pipeline.R                # ⭐ Pipeline local completo (NUEVO)
+├── 📱 launch_dashboard.R                   # ⭐ Lanzador dashboard (NUEVO)
 ├── 📖 CLAUDE.md                            # Instrucciones Claude Code
 ├── 📄 MODELO_CARET_AVANZADO.md            # ⭐ Documentación mejoras
 └── 🔧 renv.lock                            # Dependencias exactas
@@ -164,7 +168,15 @@ library(sf)
 
 ### **⚡ 4. Ejecución Pipeline**
 
-#### **Opción A: Script Maestro (Recomendado)**
+#### **Opción A: Pipeline Local Completo (Recomendado)** 🆕
+```r
+# Ejecutar pipeline completo equivalente a GitHub Actions
+source("run_local_pipeline.R")
+
+# Incluye: datos reales + predicciones + mapas + dashboard
+```
+
+#### **Opción B: Script Maestro**
 ```r
 # Pipeline completo automatizado
 source("main.R")
@@ -239,11 +251,28 @@ meteo_40h <- readRDS("output/meteo_40h_latest.rds")
 ### **📊 Dashboard Interactivo**
 
 ```r
-# Lanzar dashboard
+# Opción A: Script dedicado (más fácil) 🆕
+source("launch_dashboard.R")
+
+# Opción B: Manual
 source("R/08_dashboard_shiny.R")
 ejecutar_dashboard(puerto = 3838)
 
 # Acceder: http://localhost:3838
+```
+
+### **🌍 APIs Reales Implementadas** 🆕
+
+```r
+# API Madrid (datos tiempo real)
+source("R/api_madrid_real.R")
+datos_madrid <- obtener_datos_madrid_reales()
+# ✅ 19 estaciones, 10 contaminantes, datos XML cada 20 min
+
+# Sistema con fallback automático
+source("R/datos_realtime_fallback.R")
+datos_completos <- obtener_datos_tiempo_real(usar_fallback = FALSE)
+# ✅ Prioriza API real, fallback si falla
 ```
 
 ---
