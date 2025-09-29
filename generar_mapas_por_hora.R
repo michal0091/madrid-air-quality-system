@@ -2,50 +2,40 @@
 # Generar mapas PNG separados por hora para animación JavaScript
 
 library(ggplot2)
+library(ggrepel)
 library(dplyr)
 library(sf)
 library(lubridate)
+library(mapSpain)
+library(tidyterra)
 
-# Cargar paquetes opcionales con manejo de errores
-tryCatch({
-  library(tidyterra)
-  TIDYTERRA_AVAILABLE <- TRUE
-}, error = function(e) {
-  cat("⚠️ tidyterra no disponible, usando ggplot básico\n")
-  TIDYTERRA_AVAILABLE <- FALSE
-})
+cat("✅ Usando mapSpain para generar madrid_mask completo\n")
 
 tryCatch({
-  library(ggrepel)
-  GGREPEL_AVAILABLE <- TRUE
+  # Generar datos espaciales de Madrid con mapSpain
+  madrid <- esp_get_munic_siane(munic = "^Madrid$")
+  madrid_b <- st_buffer(madrid, dist = 5)
+  madrid_b <- st_as_sfc(st_bbox(madrid))
+  
+  cat("📥 Descargando tiles de Madrid...\n")
+  madrid_mask <- esp_getTiles(madrid_b, type = "IGNBase.Todo", mask = TRUE, crop = TRUE, zoommin = 3)
+  
+  cat("✅ madrid_mask completo generado con mapSpain\n")
+  
 }, error = function(e) {
-  cat("⚠️ ggrepel no disponible, usando geom_text básico\n")
-  GGREPEL_AVAILABLE <- FALSE
+  cat("❌ Error generando madrid_mask con mapSpain:", e$message, "\n")
+  cat("🔄 Creando madrid_mask básico de fallback...\n")
+  
+  # Fallback: polígono básico de Madrid
+  madrid_bbox <- st_bbox(c(xmin = -3.889091, ymin = 40.31443, xmax = -3.519518, ymax = 40.64290), crs = 4326)
+  madrid_mask <- st_as_sfc(madrid_bbox)
+  cat("⚠️ madrid_mask básico creado (sin tiles)\n")
 })
+
 
 # Cargar configuración global (sin madrid_mask)
 source("app/global.R")
 
-# Cargar madrid_mask necesario para este script
-rutas_madrid_mask <- c(
-  "data/madrid_mask.rds",
-  "app/madrid_mask.rds",
-  "../data/madrid_mask.rds",
-  "madrid_mask.rds"
-)
-
-madrid_mask <- NULL
-for (ruta in rutas_madrid_mask) {
-  if (file.exists(ruta)) {
-    madrid_mask <- readRDS(ruta)
-    cat("✅ madrid_mask cargado desde:", ruta, "\n")
-    break
-  }
-}
-
-if (is.null(madrid_mask)) {
-  stop("❌ madrid_mask no encontrado. Ejecutar R/00_generar_madrid_mask.R primero")
-}
 
 cat("=== GENERADOR DE MAPAS POR HORA ===\n")
 
@@ -150,20 +140,7 @@ generar_mapa_hora <- function(datos_hora, contaminante, hora_actual) {
   # Crear mapa con fondo de Madrid real
   p <- ggplot()
 
-  # Añadir fondo de Madrid si tidyterra está disponible
-  if(TIDYTERRA_AVAILABLE && exists("madrid_mask")) {
-    tryCatch({
-      p <- p + geom_spatraster_rgb(data = madrid_mask)
-    }, error = function(e) {
-      cat("⚠️ Error con geom_spatraster_rgb, usando fondo básico\n")
-      p <- p + geom_sf(data = st_as_sf(madrid_mask), fill = "lightgray", color = "white", alpha = 0.3)
-    })
-  } else {
-    # Fondo básico sin tidyterra
-    if(exists("madrid_mask")) {
-      p <- p + geom_sf(data = st_as_sf(madrid_mask), fill = "lightgray", color = "white", alpha = 0.3)
-    }
-  } 
+  p <- p + geom_spatraster_rgb(data = madrid_mask)
 
   # Separar datos reales de puntos invisibles
   datos_reales <- datos_hora[datos_hora$prediccion > 0, ]
@@ -206,9 +183,8 @@ generar_mapa_hora <- function(datos_hora, contaminante, hora_actual) {
         keywidth = 1.2,
         keyheight = 1.2
       )
-    ) +
-  # Añadir etiquetas según disponibilidad de ggrepel
-  if(GGREPEL_AVAILABLE) {
+    ) 
+  # Añadir etiquetas
     p <- p + geom_text_repel(
       data = datos_reales,
       aes(x = lon, y = lat,
@@ -219,16 +195,6 @@ generar_mapa_hora <- function(datos_hora, contaminante, hora_actual) {
       color = "white", fontface = "bold",
       bg.color = "black", bg.r = 0.3, alpha = 0.8
     )
-  } else {
-    p <- p + geom_text(
-      data = datos_reales,
-      aes(x = lon, y = lat,
-        label = ifelse(prediccion > quantile(prediccion, 0.85, na.rm = TRUE) |
-          prediccion < quantile(prediccion, 0.15, na.rm = TRUE),
-        paste0(substr(nombre_estacion, 1, 8), "\n", round(prediccion, 1)), "")),
-      size = 3.5, color = "white", fontface = "bold"
-    )
-  }
 
   p <- p +
     labs(
