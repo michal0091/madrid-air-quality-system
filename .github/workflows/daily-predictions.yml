@@ -209,27 +209,8 @@ jobs:
         # Crear todos los directorios que podrían necesitarse
         mkdir -p app/www/mapas_horas app/www/horas app/www/logos output data/realtime logs models
 
-        # Generar madrid_mask necesario para los mapas
-        echo "🗺️ Generando madrid_mask para mapas..."
-        Rscript R/00_generar_madrid_mask.R
-
-        # Verificar que madrid_mask se generó correctamente
-        if [ ! -f "data/madrid_mask.rds" ]; then
-          echo "❌ Error: madrid_mask.rds no se generó"
-          echo "Creando madrid_mask básico de fallback..."
-          Rscript -e "
-          library(sf)
-          # Crear polígono básico de Madrid como fallback
-          madrid_bbox <- st_bbox(c(xmin = -4.6, ymin = 40.3, xmax = -3.4, ymax = 40.7), crs = 4326)
-          madrid_mask <- st_as_sfc(madrid_bbox)
-          dir.create('data', showWarnings = FALSE, recursive = TRUE)
-          saveRDS(madrid_mask, 'data/madrid_mask.rds')
-          cat('✅ Madrid mask básico creado\n')
-          "
-        fi
-
-        # Copiar madrid_mask a app/ para los scripts de mapas
-        cp data/madrid_mask.rds app/madrid_mask.rds
+        # Madrid mask se genera automáticamente inline en generar_mapas_por_hora.R
+        echo "🗺️ Madrid mask se generará inline en generar_mapas_por_hora.R"
 
         # Generar mapas e imágenes para el dashboard
         echo "🗺️ Generando mapas por hora..."
