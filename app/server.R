@@ -214,14 +214,33 @@ server <- function(input, output, session) {
   
   # Sistema de animación por horas usando JavaScript
   output$animacion_temporal <- renderUI({
+    # Obtener datos para extraer horas reales
+    datos <- datos_predicciones()
+    if(is.null(datos)) return(tags$p("Cargando datos..."))
+
+    # Obtener horas disponibles (primeras 10 horas cada 4h)
+    horas_disponibles <- sort(unique(datos$fecha_hora))
+    indices_estrategicos <- seq(1, min(40, length(horas_disponibles)), by = 4)[1:10]
+    horas_estrategicas <- horas_disponibles[indices_estrategicos[!is.na(indices_estrategicos)]]
+
+    # Formatear horas para JavaScript
+    horas_formateadas <- sapply(seq_along(horas_estrategicas), function(i) {
+      hora <- horas_estrategicas[i]
+      dia <- if(as.Date(hora) == as.Date(horas_estrategicas[1])) 1 else 2
+      sprintf("%s (Día %d)", format(hora, "%H:%M"), dia)
+    })
+
+    # Generar JavaScript con horas dinámicas
+    horas_js <- paste0("'", horas_formateadas, "'", collapse = ", ")
+
     # Mapear nombres de contaminantes a archivos
     cont_archivo <- switch(input$contaminante_sel,
       "Dióxido de Nitrógeno" = "no2",
-      "Partículas < 10 µm" = "pm10", 
+      "Partículas < 10 µm" = "pm10",
       "Ozono" = "o3",
       "no2"  # default
     )
-    
+
     # Generar lista de URLs de imágenes para JavaScript - usar gráficos de estaciones
     urls_imagenes <- paste0("horas/", cont_archivo, "_hora_", sprintf("%02d", 1:10), ".png")
     urls_js <- paste0("'", urls_imagenes, "'", collapse = ", ")
@@ -251,9 +270,9 @@ server <- function(input, output, session) {
             tags$i(class = "fa fa-refresh"), " Reset"
           ),
           tags$span(
-            id = "hora-actual", 
+            id = "hora-actual",
             style = "margin-left: 15px; font-weight: bold; color: #2c3e50;",
-            "Hora: 01/10"
+            paste("Hora:", horas_formateadas[1])
           )
         )
       ),
@@ -284,7 +303,8 @@ server <- function(input, output, session) {
           
           if (img && imagenes[indiceActual]) {
             img.src = imagenes[indiceActual];
-            contador.textContent = 'Hora: ' + String(indiceActual + 1).padStart(2, '0') + '/10';
+            const horasEstrategicas = [", horas_js, "];
+            contador.textContent = 'Hora: ' + horasEstrategicas[indiceActual];
             
             indiceActual = (indiceActual + 1) % imagenes.length;
           }
@@ -372,14 +392,33 @@ server <- function(input, output, session) {
   
   # Mapa animado de Madrid (nueva funcionalidad)
   output$mapa_animado_madrid <- renderUI({
+    # Obtener datos para extraer horas reales (igual que animacion_temporal)
+    datos <- datos_predicciones()
+    if(is.null(datos)) return(tags$p("Cargando datos..."))
+
+    # Obtener horas disponibles (primeras 10 horas cada 4h)
+    horas_disponibles <- sort(unique(datos$fecha_hora))
+    indices_estrategicos <- seq(1, min(40, length(horas_disponibles)), by = 4)[1:10]
+    horas_estrategicas <- horas_disponibles[indices_estrategicos[!is.na(indices_estrategicos)]]
+
+    # Formatear horas para JavaScript (igual formato)
+    horas_formateadas <- sapply(seq_along(horas_estrategicas), function(i) {
+      hora <- horas_estrategicas[i]
+      dia <- if(as.Date(hora) == as.Date(horas_estrategicas[1])) 1 else 2
+      sprintf("%s (Día %d)", format(hora, "%H:%M"), dia)
+    })
+
+    # Generar JavaScript con horas dinámicas
+    horas_js_mapa <- paste0("'", horas_formateadas, "'", collapse = ", ")
+
     # Mapear nombres de contaminantes a archivos
     cont_archivo <- switch(input$contaminante_sel,
       "Dióxido de Nitrógeno" = "no2",
-      "Partículas < 10 µm" = "pm10", 
+      "Partículas < 10 µm" = "pm10",
       "Ozono" = "o3",
       "no2"  # default
     )
-    
+
     # Generar lista de URLs de mapas para JavaScript
     urls_mapas <- paste0("mapas_horas/mapa_", cont_archivo, "_hora_", sprintf("%02d", 1:10), ".png")
     urls_js <- paste0("'", urls_mapas, "'", collapse = ", ")
@@ -411,7 +450,7 @@ server <- function(input, output, session) {
           tags$span(
             id = "hora-actual-mapa",
             style = "margin-left: 15px; font-weight: bold; color: #1565c0;",
-            "Hora: 06:00 (Día 1)"
+            paste("Hora:", horas_formateadas[1])
           )
         )
       ),
@@ -432,11 +471,8 @@ server <- function(input, output, session) {
           const img = document.getElementById('mapa-animado');
           const contador = document.getElementById('hora-actual-mapa');
 
-          // Horas estratégicas (cada 4h para cubrir 40h totales)
-          const horasEstrategicas = [
-            '06:00 (Día 1)', '10:00 (Día 1)', '14:00 (Día 1)', '18:00 (Día 1)', '22:00 (Día 1)',
-            '02:00 (Día 2)', '06:00 (Día 2)', '10:00 (Día 2)', '14:00 (Día 2)', '18:00 (Día 2)'
-          ];
+          // Horas estratégicas dinámicas de los datos reales
+          const horasEstrategicas = [", horas_js_mapa, "];
 
           if (img && mapas[indiceActualMapa]) {
             img.src = mapas[indiceActualMapa];
