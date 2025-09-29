@@ -1146,7 +1146,14 @@ server <- function(input, output, session) {
         ),
         margin = list(b = 80, l = 60, r = 60)
       )
-    
+
+    # Aplicar sombreado de días (igual que en plotly de estaciones)
+    if(length(shapes_dias) > 0) {
+      current_layout <- p$x$layout
+      current_layout$shapes <- shapes_dias
+      p$x$layout <- current_layout
+    }
+
     return(p)
   })
   
