@@ -315,6 +315,71 @@ schedule:
 
 ## 🔮 **Roadmap Futuro**
 
+### **📋 Próximo: Índice de Calidad del Aire (ICA) Oficial** 🎯
+
+**Implementar ICA Nacional España** según normativa oficial BOE-A-2019-4494:
+
+#### **🚦 Categorías ICA Oficiales**
+- 🟢 **Buena**
+- 🟡 **Razonablemente buena**
+- 🟠 **Regular**
+- 🔴 **Desfavorable**
+- 🟣 **Muy desfavorable**
+- ⚫ **Extremadamente desfavorable**
+
+#### **📊 Contaminantes ICA Requeridos**
+1. **PM10** - Partículas < 10 μm (promedio móvil 24h)
+2. **PM2.5** - Partículas < 2.5 μm (promedio móvil 24h)
+3. **O3** - Ozono troposférico (promedio móvil 8h)
+4. **NO2** - Dióxido de Nitrógeno (promedio 1h) ✅ *Ya disponible*
+5. **SO2** - Dióxido de Azufre (promedio 1h) ⏳ *Pendiente modelo*
+
+#### **📋 Plan de Implementación ICA**
+
+**Fase 1: Obtención Normativa** 📄
+- [ ] Extraer tabla oficial valores μg/m³ desde [MITECO](https://www.miteco.gob.es/content/dam/miteco/es/calidad-y-evaluacion-ambiental/temas/atmosfera-y-calidad-del-aire/resolucion_02092020_modificacion_ica_tcm30-511596.pdf)
+- [ ] Validar rangos de concentración para cada categoría
+- [ ] Confirmar códigos de color oficiales
+
+**Fase 2: Ampliación Modelos** 🤖
+- [ ] Entrenar modelo predictivo SO2 (actualmente solo NO2, PM10, O3)
+- [ ] Validar modelo SO2 con datos históricos Madrid
+- [ ] Integrar SO2 en pipeline predicciones 40h
+
+**Fase 3: Cálculo ICA** ⚙️
+- [ ] Crear función `calcular_ica_oficial()` en `R/06_calcular_ica_oficial.R`
+- [ ] Implementar lógica "peor contaminante = ICA estación"
+- [ ] Aplicar promedios temporales correctos (1h, 8h, 24h)
+
+**Fase 4: Integración Dashboard** 📊
+- [ ] Agregar visualización ICA en dashboard Shiny
+- [ ] Implementar colores oficiales y leyenda
+- [ ] Mostrar clasificación tiempo real por estación
+- [ ] Generar alertas automáticas niveles desfavorables
+
+**Fase 5: Validación** ✅
+- [ ] Comparar ICA calculado vs datos oficiales MITECO
+- [ ] Test con datos Madrid tiempo real
+- [ ] Verificar coherencia temporal predicciones
+
+#### **🔧 Scripts a Crear/Modificar**
+```r
+# Nuevos scripts
+R/06_calcular_ica_oficial.R        # Función cálculo ICA
+
+# Modificaciones requeridas
+R/05_predicciones_horarias.R       # Incluir SO2 en predicciones
+R/02_modelo_caret_avanzado.R       # Entrenar modelo SO2
+app/server.R                       # Dashboard con ICA visual
+.github/workflows/daily-predictions.yml  # Automatizar ICA
+```
+
+#### **📄 Normativa de Referencia**
+- **BOE-A-2019-4494**: Orden TEC/351/2019 (Índice Nacional de Calidad del Aire)
+- **Resolución 02/09/2020**: Modificación tabla valores ICA
+
+---
+
 ### **2025 Q3-Q4**
 - [ ] **XGBoost Integration**: Si disponible en entorno
 - [ ] **Ensemble Learning**: Combinación múltiples algoritmos
