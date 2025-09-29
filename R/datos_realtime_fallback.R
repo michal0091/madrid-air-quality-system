@@ -100,13 +100,31 @@ obtener_datos_aemet_con_fallback <- function() {
   return(generar_datos_meteo_madrid())
 }
 
-# Función Madrid con fallback  
+# Función Madrid con fallback
 obtener_datos_madrid_con_fallback <- function() {
-  
-  # Intentar API real (simplificado por problemas de URL)
-  # En producción, aquí iría la llamada a API real Madrid
-  
-  # Por ahora, generar datos de calidad del aire realistas
+
+  # PASO 1: Intentar API REAL de Madrid
+  if(file.exists("R/api_madrid_real.R")) {
+    source("R/api_madrid_real.R", local = TRUE)
+
+    tryCatch({
+      log_info("🌐 Intentando API REAL Madrid...")
+      datos_reales <- obtener_datos_madrid_reales(max_registros = 150)
+
+      if(!is.null(datos_reales) && nrow(datos_reales) > 0) {
+        log_success("✅ Datos REALES obtenidos de API Madrid: {nrow(datos_reales)} registros")
+        return(datos_reales)
+      } else {
+        log_warn("⚠️ API Madrid no devolvió datos válidos")
+      }
+
+    }, error = function(e) {
+      log_warn("⚠️ Error en API Madrid REAL: {e$message}")
+    })
+  }
+
+  # PASO 2: Fallback - generar datos simulados realistas
+  log_info("🔄 Usando fallback - datos simulados realistas")
   generar_datos_calidad_madrid <- function() {
     
     # Estaciones principales de Madrid (coordenadas aproximadas)
