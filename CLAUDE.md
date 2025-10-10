@@ -154,6 +154,55 @@ install.packages(c(
 ))
 ```
 
+## Phase 5: Índice de Calidad del Aire (ICA) Oficial (PENDIENTE)
+
+### Implementación ICA Nacional España
+Pendiente de implementar el **Índice Nacional de Calidad del Aire** oficial según BOE-A-2019-4494:
+
+#### Contaminantes ICA Requeridos
+1. **PM10** - Partículas < 10 μm (24h promedio móvil)
+2. **PM2.5** - Partículas < 2.5 μm (24h promedio móvil)
+3. **O3** - Ozono troposférico (8h promedio móvil)
+4. **NO2** - Dióxido de Nitrógeno (1h promedio)
+5. **SO2** - Dióxido de Azufre (1h promedio)
+
+#### Categorías ICA Oficiales
+- 🟢 **Buena**
+- 🟡 **Razonablemente buena**
+- 🟠 **Regular**
+- 🔴 **Desfavorable**
+- 🟣 **Muy desfavorable**
+- ⚫ **Extremadamente desfavorable**
+
+#### Normativa de Referencia
+- **BOE-A-2019-4494**: Orden TEC/351/2019 (Índice Nacional de Calidad del Aire)
+- **Resolución 02/09/2020**: Modificación tabla valores ICA
+- **URL**: https://www.miteco.gob.es/content/dam/miteco/es/calidad-y-evaluacion-ambiental/temas/atmosfera-y-calidad-del-aire/resolucion_02092020_modificacion_ica_tcm30-511596.pdf
+
+#### Tareas Pendientes
+1. **Obtener tabla oficial** con valores μg/m³ para cada categoría
+2. **Ampliar modelos predictivos** para incluir SO2 (actualmente solo NO2, PM10, O3)
+3. **Implementar función cálculo ICA** que tome el peor contaminante
+4. **Integrar en dashboard** con colores oficiales y clasificación
+5. **Validar con datos reales** Madrid para verificar coherencia
+
+#### Metodología de Cálculo
+- **Temporal**: Usar promedios según contaminante (1h, 8h, 24h)
+- **Espacial**: ICA por estación = peor categoría de todos los contaminantes
+- **Tiempo Real**: Actualización continua con APIs Madrid + AEMET
+- **Predicción**: Aplicar ICA a predicciones 40h para alertas tempranas
+
+#### Scripts a Crear/Modificar
+```r
+# Nuevo script para ICA
+R/06_calcular_ica_oficial.R
+
+# Modificaciones necesarias
+R/05_predicciones_horarias.R  # Añadir SO2
+R/02_modelo_caret_avanzado.R  # Entrenar modelo SO2
+app/server.R                  # Mostrar ICA en dashboard
+```
+
 ### Known Issues and Fixes (2025-07-30)
 
 #### Spatial Modeling Script Corrections
@@ -462,3 +511,106 @@ The dashboard expects these output files from the prediction pipeline:
 - **Temporal Predictions**: 40-hour forecasting vs historical analysis
 - **CARET Integration**: Machine learning model integration
 - **Spanish Localization**: UI and data labels in Spanish
+
+## Sesión de Trabajo (2025-09-29)
+
+### Tareas Completadas Hoy
+
+#### 🚀 Implementación APIs Reales Madrid
+- ✅ **R/api_madrid_real.R**: Creado script para API real Madrid
+  - Parsing XML de https://ciudadesabiertas.madrid.es/dynamicAPI/API/query/calair_tiemporeal.xml
+  - 19 estaciones, 10 contaminantes, datos cada 20 minutos
+  - Formato sf compatible con pipeline existente
+
+- ✅ **R/datos_realtime_fallback.R**: Actualizado para priorizar API real
+  - Lógica: API Madrid real → AEMET API → Fallback simulado
+  - Sistema robusto de manejo de errores
+  - Logging detallado para debugging
+
+#### 🔧 Pipeline Local Completo
+- ✅ **run_local_pipeline.R**: Creado equivalente local de GitHub Actions
+  - Pipeline completo: datos reales → predicciones → mapas → dashboard
+  - Incluye carga .Renviron para AEMET_API_KEY
+  - Sincronización automática app/data/
+
+- ✅ **launch_dashboard.R**: Script simplificado para lanzar Shiny
+  - Verificación automática de datos necesarios
+  - Puerto 3838 configurable
+  - Instrucciones claras para usuario
+
+#### 📚 Documentación Actualizada
+- ✅ **README.md**: Actualizado con nuevas funcionalidades
+  - APIs reales implementadas documentadas
+  - Instrucciones pipeline local
+  - Estructura repositorio actualizada
+  - **Plan ICA Fase 5** agregado con roadmap completo
+
+- ✅ **Commits Git**: Sistema actualizado en GitHub
+  - feat: implement real Madrid API and complete local pipeline
+  - docs: update README with real APIs and local pipeline documentation
+  - docs: add Air Quality Index (ICA) implementation roadmap to README
+
+#### 🎯 Planificación ICA (Índice de Calidad del Aire)
+- ✅ **Investigación normativa**: BOE-A-2019-4494 y MITECO
+- ✅ **Plan 5 fases documentado**:
+  1. Obtención tabla oficial valores μg/m³
+  2. Entrenamiento modelo SO2 (faltante)
+  3. Función cálculo ICA oficial
+  4. Integración dashboard con colores oficiales
+  5. Validación con datos reales Madrid
+
+- ✅ **Categorías ICA identificadas**:
+  - 🟢 Buena / 🟡 Razonablemente buena / 🟠 Regular
+  - 🔴 Desfavorable / 🟣 Muy desfavorable / ⚫ Extremadamente desfavorable
+
+### Estado Actual del Sistema
+
+#### ✅ **100% Datos Reales**
+- **Madrid API**: 19 estaciones, XML parsing funcional
+- **AEMET API**: Configurado con clave en .Renviron
+- **GitHub Actions**: Pipeline automatizado con APIs reales
+- **Dashboard**: Datos sincronizados en app/data/
+
+#### ✅ **Modelo CARET Optimizado**
+- **R² = 0.929** con datos históricos reales 2015-2025
+- **RMSE = 3.74 µg/m³**
+- **22 variables predictoras** incluyendo meteorológicas
+- **Contaminantes**: NO2, PM10, O3 (SO2 pendiente para ICA)
+
+#### ✅ **Pipeline Automatizado**
+- **Local**: run_local_pipeline.R equivalente a GitHub Actions
+- **Cloud**: GitHub Actions diario con deploy a shinyapps.io
+- **Dashboard**: launch_dashboard.R para uso local fácil
+
+### Próximas Sesiones (Pendiente)
+
+#### 🎯 **Prioridad 1: ICA Oficial**
+- [ ] Extraer tabla oficial valores desde PDF MITECO
+- [ ] Implementar R/06_calcular_ica_oficial.R
+- [ ] Entrenar modelo SO2 con datos históricos
+- [ ] Integrar ICA en dashboard con colores oficiales
+
+#### 🔧 **Mejoras Técnicas**
+- [ ] Optimizar memoria pipeline para datasets grandes
+- [ ] Implementar cache inteligente para APIs
+- [ ] Añadir validación automática calidad datos
+
+#### 📊 **Dashboard Enhancement**
+- [ ] Añadir tab ICA con clasificación tiempo real
+- [ ] Implementar alertas automáticas niveles desfavorables
+- [ ] Mejorar responsive design para móviles
+
+### Archivos Importantes Creados/Modificados Hoy
+```
+R/api_madrid_real.R              # ⭐ NUEVO - API Madrid real
+run_local_pipeline.R             # ⭐ NUEVO - Pipeline local completo
+launch_dashboard.R               # ⭐ NUEVO - Lanzador dashboard
+R/datos_realtime_fallback.R      # ✏️ MODIFICADO - Prioriza API real
+README.md                        # ✏️ MODIFICADO - Plan ICA + nuevas features
+```
+
+### Notas Técnicas
+- **APIs estables**: Madrid XML y AEMET funcionando correctamente
+- **Fallback robusto**: Sistema tolerante a fallos de API
+- **Datos validados**: 1920 predicciones 40h generadas exitosamente
+- **GitHub Actions**: Confirmado uso 100% APIs reales en producción
