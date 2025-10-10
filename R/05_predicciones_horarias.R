@@ -222,18 +222,59 @@ generar_predicciones_estaciones <- function(datos_meteo, archivo_modelos = "mode
 
   # Cargar modelos RANGER ICA (nuevos modelos optimizados)
   if(!file.exists(archivo_modelos)) {
-    log_error("Archivo de modelos no existe: {archivo_modelos}")
-    log_warn("Intentando con modelos legacy...")
+    log_warn("Archivo {archivo_modelos} no existe")
+    log_info("Intentando cargar modelos individuales RANGER ICA...")
 
-    # Fallback a modelos viejos si existen
-    archivo_modelos <- "models/modelos_caret_avanzados.rds"
-    if(!file.exists(archivo_modelos)) {
-      log_error("No se encontraron modelos disponibles")
-      return(NULL)
+    # Intentar cargar modelos individuales (descargados desde GitHub release)
+    archivos_individuales <- list.files("models/", pattern = "^ranger_ica_.*\\.rds$", full.names = TRUE)
+    archivos_individuales <- archivos_individuales[!grepl("todos|metricas", archivos_individuales)]
+
+    if(length(archivos_individuales) >= 5) {
+      log_info("Cargando {length(archivos_individuales)} modelos individuales...")
+      modelos <- list()
+
+      for(archivo in archivos_individuales) {
+        # Extraer nombre del contaminante del nombre del archivo
+        nombre_base <- basename(archivo)
+        # Convertir nombre de archivo a nombre de contaminante
+        nombre_contaminante <- gsub("^ranger_ica_", "", nombre_base)
+        nombre_contaminante <- gsub("\\.rds$", "", nombre_contaminante)
+        nombre_contaminante <- gsub("_", " ", nombre_contaminante)
+
+        # Mapear nombres de archivo a nombres oficiales
+        nombre_contaminante <- case_when(
+          grepl("Di.*xido.*de.*Nitr", nombre_contaminante, ignore.case = TRUE) ~ "Dióxido de Nitrógeno",
+          grepl("Part.*culas.*10", nombre_contaminante, ignore.case = TRUE) ~ "Partículas < 10 µm",
+          grepl("Part.*culas.*2.*5", nombre_contaminante, ignore.case = TRUE) ~ "Partículas < 2.5 µm",
+          grepl("Ozono", nombre_contaminante, ignore.case = TRUE) ~ "Ozono",
+          grepl("Di.*xido.*de.*Azufre", nombre_contaminante, ignore.case = TRUE) ~ "Dióxido de Azufre",
+          TRUE ~ nombre_contaminante
+        )
+
+        modelo <- readRDS(archivo)
+        modelos[[nombre_contaminante]] <- modelo
+        log_info("  ✓ {nombre_contaminante}")
+      }
+
+      log_success("✓ {length(modelos)} modelos RANGER ICA cargados desde archivos individuales")
+
+    } else {
+      log_error("Solo se encontraron {length(archivos_individuales)} modelos (se esperaban 5)")
+      log_warn("Intentando con modelos legacy...")
+
+      # Fallback a modelos viejos si existen
+      archivo_modelos <- "models/modelos_caret_avanzados.rds"
+      if(!file.exists(archivo_modelos)) {
+        log_error("No se encontraron modelos disponibles")
+        return(NULL)
+      }
+
+      modelos <- readRDS(archivo_modelos)
     }
+  } else {
+    # Cargar archivo consolidado si existe (uso local)
+    modelos <- readRDS(archivo_modelos)
   }
-
-  modelos <- readRDS(archivo_modelos)
 
   # Determinar formato de modelos (ranger ICA vs legacy CARET)
   if("Dióxido de Nitrógeno" %in% names(modelos)) {
