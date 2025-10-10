@@ -60,7 +60,9 @@ dir.create("app/www/mapas_horas", showWarnings = FALSE, recursive = TRUE)
 
 # Obtener horas únicas
 horas_unicas <- sort(unique(datos$fecha_hora))
-contaminantes <- c("Dióxido de Nitrógeno", "Partículas < 10 µm", "Ozono")
+# 5 contaminantes ICA oficiales
+contaminantes <- c("Dióxido de Nitrógeno", "Partículas < 10 µm", "Partículas < 2.5 µm",
+                   "Ozono", "Dióxido de Azufre")
 
 cat("📅 Horas encontradas:", length(horas_unicas), "\n")
 cat("🏭 Contaminantes:", paste(contaminantes, collapse = ", "), "\n")
@@ -80,27 +82,39 @@ generar_mapa_hora <- function(datos_hora, contaminante, hora_actual) {
     switch(contaminante,
       "Dióxido de Nitrógeno" = {
         if(x < 25) "Bajo"
-        else if(x < 50) "Medio" 
+        else if(x < 50) "Medio"
         else if(x < 100) "Alto"
         else "Muy Alto"
       },
       "Partículas < 10 µm" = {
         if(x < 20) "Bajo"
         else if(x < 40) "Medio"
-        else if(x < 75) "Alto" 
+        else if(x < 75) "Alto"
+        else "Muy Alto"
+      },
+      "Partículas < 2.5 µm" = {
+        if(x < 10) "Bajo"
+        else if(x < 25) "Medio"
+        else if(x < 50) "Alto"
         else "Muy Alto"
       },
       "Ozono" = {
         if(x < 80) "Bajo"
         else if(x < 120) "Medio"
         else if(x < 160) "Alto"
-        else "Muy Alto" 
+        else "Muy Alto"
+      },
+      "Dióxido de Azufre" = {
+        if(x < 40) "Bajo"
+        else if(x < 80) "Medio"
+        else if(x < 125) "Alto"
+        else "Muy Alto"
       },
       # default NO2
       {
         if(x < 25) "Bajo"
         else if(x < 50) "Medio"
-        else if(x < 100) "Alto" 
+        else if(x < 100) "Alto"
         else "Muy Alto"
       }
     )
@@ -170,8 +184,10 @@ generar_mapa_hora <- function(datos_hora, contaminante, hora_actual) {
       limits = c("Bajo", "Medio", "Alto", "Muy Alto"),
       labels = switch(contaminante,
         "Dióxido de Nitrógeno" = c("< 25", "25-50", "50-100", "> 100"),
-        "Partículas < 10 µm" = c("< 20", "20-40", "40-75", "> 75"), 
+        "Partículas < 10 µm" = c("< 20", "20-40", "40-75", "> 75"),
+        "Partículas < 2.5 µm" = c("< 10", "10-25", "25-50", "> 50"),
         "Ozono" = c("< 80", "80-120", "120-160", "> 160"),
+        "Dióxido de Azufre" = c("< 40", "40-80", "80-125", "> 125"),
         c("< 25", "25-50", "50-100", "> 100") # default
       ),
       drop = FALSE,
@@ -235,8 +251,10 @@ for(contaminante in contaminantes) {
   # Mapear nombre para archivo
   cont_archivo <- switch(contaminante,
     "Dióxido de Nitrógeno" = "no2",
-    "Partículas < 10 µm" = "pm10", 
-    "Ozono" = "o3"
+    "Partículas < 10 µm" = "pm10",
+    "Partículas < 2.5 µm" = "pm25",
+    "Ozono" = "o3",
+    "Dióxido de Azufre" = "so2"
   )
   
   # Seleccionar 10 horas estratégicas cada 4 horas para cubrir 40h totales
