@@ -108,20 +108,23 @@ expandir_meteo_sinusoidal <- function(datos_diarios) {
   log_info("Iniciando expansión meteorológica sinusoidal...")
   
   # Función para interpolación sinusoidal con horas exactas
-  interpolar_sinusoidal <- function(valor_medio, valor_min, valor_max, 
+  interpolar_sinusoidal <- function(valor_medio, valor_min, valor_max,
                                    hora_min = 6, hora_max = 14) {
     horas <- 0:23
-    
-    # Calcular amplitud y fase
+
+    # Calcular amplitud (mitad del rango)
     amplitud <- (valor_max - valor_min) / 2
-    valor_base <- (valor_max + valor_min) / 2
-    
+
+    # IMPORTANTE: Usar valor_medio real como base, NO el promedio de extremos
+    # Esto preserva la media correctamente
+    valor_base <- valor_medio
+
     # Ajustar fase para que el máximo ocurra a hora_max
     fase <- hora_max - 6  # 6 corresponde a pi/2 en el ciclo de 24h
-    
-    # Función sinusoidal
+
+    # Función sinusoidal centrada en la media real
     valores_horarios <- valor_base + amplitud * sin(2 * pi * (horas - fase) / 24)
-    
+
     return(valores_horarios)
   }
   
@@ -136,12 +139,23 @@ expandir_meteo_sinusoidal <- function(datos_diarios) {
     rowwise() %>%
     do({
       fecha_base <- .$fecha
-      
-      # Extraer horas exactas cuando están disponibles
-      hora_temp_min <- ifelse(is.na(.$temp_minima_hora), 6, extraer_hora(.$temp_minima_hora))
-      hora_temp_max <- ifelse(is.na(.$temp_maxima_hora), 14, extraer_hora(.$temp_maxima_hora))
-      hora_hum_min <- ifelse(is.na(.$hora_humedad_minima), 14, extraer_hora(.$hora_humedad_minima))
-      hora_hum_max <- ifelse(is.na(.$hora_humedad_maxima), 6, extraer_hora(.$hora_humedad_maxima))
+
+      # Extraer horas exactas cuando están disponibles (con fallback si columnas no existen)
+      hora_temp_min <- if("temp_minima_hora" %in% names(.) && !is.na(.$temp_minima_hora)) {
+        extraer_hora(.$temp_minima_hora)
+      } else { 6 }
+
+      hora_temp_max <- if("temp_maxima_hora" %in% names(.) && !is.na(.$temp_maxima_hora)) {
+        extraer_hora(.$temp_maxima_hora)
+      } else { 14 }
+
+      hora_hum_min <- if("hora_humedad_minima" %in% names(.) && !is.na(.$hora_humedad_minima)) {
+        extraer_hora(.$hora_humedad_minima)
+      } else { 14 }
+
+      hora_hum_max <- if("hora_humedad_maxima" %in% names(.) && !is.na(.$hora_humedad_maxima)) {
+        extraer_hora(.$hora_humedad_maxima)
+      } else { 6 }
       
       # Temperatura sinusoidal
       temp_horaria <- interpolar_sinusoidal(
@@ -157,11 +171,23 @@ expandir_meteo_sinusoidal <- function(datos_diarios) {
       
       # Presión con spline suave
       if(!is.na(.$presion_minima_hpa) && !is.na(.$presion_maxima_hpa)) {
-        hora_pres_min <- ifelse(is.na(.$hora_presion_minima), 17, extraer_hora(.$hora_presion_minima))
-        hora_pres_max <- ifelse(is.na(.$hora_presion_maxima), 10, extraer_hora(.$hora_presion_maxima))
+        hora_pres_min <- if("hora_presion_minima" %in% names(.) && !is.na(.$hora_presion_minima)) {
+          extraer_hora(.$hora_presion_minima)
+        } else { 17 }
+
+        hora_pres_max <- if("hora_presion_maxima" %in% names(.) && !is.na(.$hora_presion_maxima)) {
+          extraer_hora(.$hora_presion_maxima)
+        } else { 10 }
         
+        # Calcular media de presión (o usar columna si existe)
+        presion_media <- if("presion_media_hpa" %in% names(.) && !is.na(.$presion_media_hpa)) {
+          .$presion_media_hpa
+        } else {
+          (.$presion_minima_hpa + .$presion_maxima_hpa) / 2
+        }
+
         presion_horaria <- interpolar_sinusoidal(
-          (.$presion_minima_hpa + .$presion_maxima_hpa) / 2,
+          presion_media,
           .$presion_minima_hpa, .$presion_maxima_hpa,
           hora_pres_min, hora_pres_max
         )

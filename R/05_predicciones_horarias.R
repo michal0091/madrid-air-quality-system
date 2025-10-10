@@ -125,91 +125,89 @@ obtener_meteo_aemet <- function(horas_futuras = 40) {
   return(generar_meteo_futuro(horas_futuras))
 }
 
-# 3b. FUNCIÓN PARA CREAR VARIABLES DERIVADAS PARA PREDICCIÓN ----
+# 3b. FUNCIÓN PARA CREAR VARIABLES DERIVADAS PARA PREDICCIÓN (RANGER ICA + UTM) ----
 crear_variables_derivadas_prediccion <- function(datos) {
-  log_info("Creando variables derivadas para predicción...")
-  
+  log_info("Creando variables derivadas para predicción (formato RANGER ICA + UTM)...")
+
+  # Centro de Madrid en UTM Zone 30N (Puerta del Sol)
+  MADRID_CENTRO_UTM_X <- 440000  # metros
+  MADRID_CENTRO_UTM_Y <- 4474000  # metros
+
   datos_enriquecidos <- datos %>%
     mutate(
-      # Variables temporales avanzadas (igual que modelo entrenado)
+      # VARIABLES ESPACIALES UTM: Convertir lat/lon a UTM Zone 30N (EPSG:25830)
+      utm_x = if("lon" %in% names(.) && "lat" %in% names(.)) {
+        # Conversión con sf (si está disponible)
+        coords_wgs84_x <- st_as_sf(data.frame(lon = lon, lat = lat),
+                                    coords = c("lon", "lat"), crs = 4326)
+        coords_utm_x <- st_transform(coords_wgs84_x, 25830)
+        st_coordinates(coords_utm_x)[,1]
+      } else {
+        MADRID_CENTRO_UTM_X  # Default
+      },
+
+      utm_y = if("lon" %in% names(.) && "lat" %in% names(.)) {
+        coords_wgs84_y <- st_as_sf(data.frame(lon = lon, lat = lat),
+                                    coords = c("lon", "lat"), crs = 4326)
+        coords_utm_y <- st_transform(coords_wgs84_y, 25830)
+        st_coordinates(coords_utm_y)[,2]
+      } else {
+        MADRID_CENTRO_UTM_Y  # Default
+      },
+
+      # Variables espaciales derivadas
+      dist_centro_madrid = sqrt((utm_x - MADRID_CENTRO_UTM_X)^2 +
+                               (utm_y - MADRID_CENTRO_UTM_Y)^2) / 1000,  # km
+      utm_x_norm = (utm_x - MADRID_CENTRO_UTM_X) / 10000,  # decenas de km
+      utm_y_norm = (utm_y - MADRID_CENTRO_UTM_Y) / 10000,
+
+      # Variables temporales (igual que entrenamiento ranger)
       año = year(fecha_hora),
       mes = month(fecha_hora),
       dia = day(fecha_hora),
       dia_año = yday(fecha_hora),
-      dia_semana = wday(fecha_hora),
-      fin_semana = ifelse(dia_semana %in% c(1,7), 1, 0),
+      dia_semana = wday(fecha_hora) - 1,  # 0-6 (Domingo=0)
+      fin_semana = ifelse(dia_semana %in% c(0, 6), 1, 0),  # 0=Domingo, 6=Sábado
       
-      periodo_dia = case_when(
-        hora >= 6 & hora < 12 ~ "Mañana",
-        hora >= 12 & hora < 18 ~ "Tarde", 
-        hora >= 18 & hora < 24 ~ "Noche",
-        TRUE ~ "Madrugada"
-      ),
-      estacion_año = case_when(
-        mes %in% c(12, 1, 2) ~ "Invierno",
-        mes %in% c(3, 4, 5) ~ "Primavera",
-        mes %in% c(6, 7, 8) ~ "Verano",
-        TRUE ~ "Otoño"
-      ),
-      
-      # Variables meteorológicas derivadas (críticas para R² alto)
+      # Variables temporales cíclicas (CRÍTICO: igual que entrenamiento)
+      sin_hora = sin(2 * pi * hora / 24),
+      cos_hora = cos(2 * pi * hora / 24),
+      sin_dia_año = sin(2 * pi * dia_año / 365),
+      cos_dia_año = cos(2 * pi * dia_año / 365),
+
+      # Variables meteorológicas derivadas (CRÍTICO: igual que entrenamiento)
       temp_sq = temp_media_c^2,
-      temp_log = log(temp_media_c + 1),
       temp_hum_ratio = temp_media_c / (humedad_media_pct + 1),
-      temp_hum_product = temp_media_c * humedad_media_pct / 100,
-      
-      # Componentes vectoriales del viento
-      viento_x = vel_viento_media_ms * cos(dir_viento_grados * pi/180),
-      viento_y = vel_viento_media_ms * sin(dir_viento_grados * pi/180),
-      viento_magnitud_sq = vel_viento_media_ms^2,
-      
-      # Variables de presión normalizadas
-      presion_anomalia = presion_maxima_hpa - 1013,
-      presion_norm = (presion_maxima_hpa - 1000) / 50,
-      
-      # Interacciones espaciales
-      lat_temp = lat * temp_media_c,
-      lon_hum = lon * humedad_media_pct,
-      distancia_centro = sqrt((lat - 40.42)^2 + (lon + 3.7)^2),
-      
-      # Variables adicionales que espera el modelo (del entrenamiento simulado)
-      temp_base = 15 + 12*sin((dia_año-80)*2*pi/365),  # Temperatura base estacional
-      temp_diurna = 8*sin((hora-6)*pi/12),              # Componente diurna
-      
-      # Variables específicas por contaminante (valores aproximados Madrid)
-      base_contaminante = case_when(
-        contaminante == "Dióxido de Nitrógeno" ~ 35,
-        contaminante == "Partículas < 10 µm" ~ 25,
-        contaminante == "Ozono" ~ 65,
-        TRUE ~ 30
-      ),
-      
-      factor_estacional = sin((dia_año-100)*2*pi/365),  # Factor estacional
-      factor_diurno = sin((hora-7)*pi/12),              # Factor diurno  
-      factor_tipo = 1.2,  # Asumir urbana (factor 1.2)
-      
-      # Variables categóricas como numéricas (igual que entrenamiento)
-      tipo_estacion = "Urbana",  # Asumir urbana para todas (simplificación)
-      tipo_num = case_when(
-        tipo_estacion == "Industrial" ~ 3,
-        tipo_estacion == "Urbana" ~ 2,
-        TRUE ~ 1
-      ),
-      periodo_num = case_when(
-        periodo_dia == "Mañana" ~ 1,
-        periodo_dia == "Tarde" ~ 2,
-        periodo_dia == "Noche" ~ 3,
-        TRUE ~ 4
-      ),
-      estacion_num = case_when(
-        estacion_año == "Primavera" ~ 1,
-        estacion_año == "Verano" ~ 2,
-        estacion_año == "Otoño" ~ 3,
-        TRUE ~ 4
-      )
-    ) %>%
-    # Remover columnas intermedias que no usa el modelo
-    select(-periodo_dia, -estacion_año, -tipo_estacion)
+
+      # Componentes del viento (CRÍTICO: usar dirección si existe)
+      dir_viento = ifelse("dir_viento_grados" %in% names(.), dir_viento_grados, 180),
+      viento_x = vel_viento_media_ms * cos(dir_viento * pi / 180),
+      viento_y = vel_viento_media_ms * sin(dir_viento * pi / 180),
+
+      # Variables opcionales que pueden venir de expansión meteorológica
+      presion_media_hpa = ifelse("presion_media_hpa" %in% names(.), presion_media_hpa,
+                                  ifelse("presion_maxima_hpa" %in% names(.), presion_maxima_hpa, 1013)),
+      humedad_maxima_pct = ifelse("humedad_maxima_pct" %in% names(.), humedad_maxima_pct,
+                                   humedad_media_pct * 1.15),
+      humedad_minima_pct = ifelse("humedad_minima_pct" %in% names(.), humedad_minima_pct,
+                                   humedad_media_pct * 0.85),
+      temp_maxima_c = ifelse("temp_maxima_c" %in% names(.), temp_maxima_c,
+                             temp_media_c + 6),
+      temp_minima_c = ifelse("temp_minima_c" %in% names(.), temp_minima_c,
+                             temp_media_c - 6),
+      presion_maxima_hpa = ifelse("presion_maxima_hpa" %in% names(.), presion_maxima_hpa,
+                                  presion_media_hpa + 3),
+      presion_minima_hpa = ifelse("presion_minima_hpa" %in% names(.), presion_minima_hpa,
+                                  presion_media_hpa - 3),
+
+      # Variables derivadas adicionales (si las columnas base existen)
+      temp_range = ifelse(exists("temp_maxima_c") & exists("temp_minima_c"),
+                         temp_maxima_c - temp_minima_c, 12),
+      presion_diff = ifelse(exists("presion_maxima_hpa") & exists("presion_minima_hpa"),
+                           presion_maxima_hpa - presion_minima_hpa, 6),
+      humedad_diff = ifelse(exists("humedad_maxima_pct") & exists("humedad_minima_pct"),
+                           humedad_maxima_pct - humedad_minima_pct, 30)
+    )
   
   n_variables <- ncol(datos_enriquecidos) - 1  # -1 por contaminante
   log_info("Variables derivadas creadas: {n_variables} predictores totales")
@@ -218,19 +216,39 @@ crear_variables_derivadas_prediccion <- function(datos) {
 }
 
 # 4. FUNCIÓN PARA GENERAR PREDICCIONES POR ESTACIÓN ----
-generar_predicciones_estaciones <- function(datos_meteo, archivo_modelos = "models/modelos_caret_avanzados.rds") {
-  
+generar_predicciones_estaciones <- function(datos_meteo, archivo_modelos = "models/ranger_ica_todos.rds") {
+
   log_info("Generando predicciones para estaciones de Madrid...")
-  
-  # Cargar modelos
+
+  # Cargar modelos RANGER ICA (nuevos modelos optimizados)
   if(!file.exists(archivo_modelos)) {
     log_error("Archivo de modelos no existe: {archivo_modelos}")
+    log_warn("Intentando con modelos legacy...")
+
+    # Fallback a modelos viejos si existen
+    archivo_modelos <- "models/modelos_caret_avanzados.rds"
+    if(!file.exists(archivo_modelos)) {
+      log_error("No se encontraron modelos disponibles")
+      return(NULL)
+    }
+  }
+
+  modelos <- readRDS(archivo_modelos)
+
+  # Determinar formato de modelos (ranger ICA vs legacy CARET)
+  if("Dióxido de Nitrógeno" %in% names(modelos)) {
+    # Formato RANGER ICA (nuevos modelos)
+    log_info("✓ Modelos RANGER ICA cargados: {length(modelos)} contaminantes")
+    usar_ranger <- TRUE
+  } else if("modelos" %in% names(modelos)) {
+    # Formato legacy CARET
+    modelos <- modelos$modelos
+    log_info("✓ Modelos legacy CARET cargados: {length(modelos)} contaminantes")
+    usar_ranger <- FALSE
+  } else {
+    log_error("Formato de modelos no reconocido")
     return(NULL)
   }
-  
-  modelos_completos <- readRDS(archivo_modelos)
-  modelos <- modelos_completos$modelos  # Extraer solo los modelos
-  log_info("Modelos cargados: {length(modelos)} contaminantes")
   
   # Coordenadas de estaciones principales de Madrid
   estaciones <- data.frame(
@@ -266,37 +284,57 @@ generar_predicciones_estaciones <- function(datos_meteo, archivo_modelos = "mode
   
   # Generar predicciones para cada contaminante
   predicciones_finales <- list()
-  
+
   for(contaminante_nombre in names(modelos)) {
     log_info("Prediciendo {contaminante_nombre}...")
-    
+
     # Filtrar datos para este contaminante
     datos_contaminante <- combinaciones %>%
       filter(contaminante == contaminante_nombre)
-    
-    # Obtener modelo
-    modelo_info <- modelos[[contaminante_nombre]]
-    modelo_caret <- modelo_info$modelo
-    
+
     tryCatch({
+      # Obtener modelo según formato
+      if(usar_ranger) {
+        # Modelos RANGER ICA (directamente el objeto train)
+        modelo_caret <- modelos[[contaminante_nombre]]
+
+        # Métricas desde resultados del modelo
+        metricas_modelo <- modelo_caret$results %>%
+          filter(mtry == modelo_caret$bestTune$mtry,
+                 splitrule == modelo_caret$bestTune$splitrule,
+                 min.node.size == modelo_caret$bestTune$min.node.size)
+
+        rmse_modelo <- metricas_modelo$RMSE[1]
+        r2_modelo <- metricas_modelo$Rsquared[1]
+
+      } else {
+        # Modelos legacy CARET (con estructura $modelo + $metricas)
+        modelo_info <- modelos[[contaminante_nombre]]
+        modelo_caret <- modelo_info$modelo
+        rmse_modelo <- modelo_info$metricas$RMSE
+        r2_modelo <- modelo_info$metricas$Rsquared
+      }
+
       # Hacer predicciones
       predicciones <- predict(modelo_caret, newdata = datos_contaminante)
-      
+
       # Agregar predicciones a los datos
       datos_con_predicciones <- datos_contaminante %>%
         mutate(
           prediccion = predicciones,
-          rmse_modelo = modelo_info$metricas$RMSE,
-          r2_modelo = modelo_info$metricas$Rsquared
+          rmse_modelo = rmse_modelo,
+          r2_modelo = r2_modelo
         )
-      
+
       predicciones_finales[[contaminante_nombre]] <- datos_con_predicciones
-      
+
       log_success("✓ {contaminante_nombre}: {nrow(datos_con_predicciones)} predicciones")
       log_info("  Rango: {round(min(predicciones), 1)} - {round(max(predicciones), 1)} µg/m³")
-      
+      log_info("  Modelo: RMSE={round(rmse_modelo, 2)}, R²={round(r2_modelo, 3)}")
+
     }, error = function(e) {
       log_error("Error prediciendo {contaminante_nombre}: {e$message}")
+      log_error("Traceback: {paste(capture.output(traceback()), collapse='\n')}")
     })
   }
   
