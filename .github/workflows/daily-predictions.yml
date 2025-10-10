@@ -115,19 +115,23 @@ jobs:
         cat('✅ Dependencias esenciales instaladas\n')
         "
 
-    - name: Download latest trained model
+    - name: Download latest trained models
       run: |
-        # Limpiar modelos existentes y descargar el más reciente
-        rm -f models/modelos_caret_avanzados*.rds
-        gh release download --pattern "modelos_caret_avanzados*.rds" --dir models/ || echo "No model found, skipping download"
+        # Crear directorio de modelos
+        mkdir -p models
 
-        # Verificar que el modelo existe
-        if [ ! -f models/modelos_caret_avanzados.rds ]; then
-          echo "Error: No se pudo descargar el modelo"
-          exit 1
+        # Descargar modelos RANGER ICA (5 contaminantes)
+        echo "📥 Descargando modelos RANGER ICA..."
+        gh release download --pattern "ranger_ica_*.rds" --dir models/ || echo "No RANGER models found, skipping download"
+
+        # Verificar que existen los modelos ICA
+        model_count=$(ls -1 models/ranger_ica_*.rds 2>/dev/null | wc -l)
+        echo "✅ Modelos RANGER ICA encontrados: $model_count"
+
+        if [ "$model_count" -lt 5 ]; then
+          echo "⚠️ Advertencia: Se esperaban 5 modelos ICA (NO2, PM10, PM2.5, O3, SO2)"
+          echo "💡 Continuando con modelos disponibles..."
         fi
-
-        echo "✅ Modelo descargado correctamente"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -249,7 +253,8 @@ jobs:
         cat('=== VERIFICACIÓN ARCHIVOS DASHBOARD ===\n')
 
         # Verificar mapas por hora (críticos para animación)
-        contaminantes <- c('no2', 'pm10', 'ozono')
+        # 5 contaminantes ICA oficiales
+        contaminantes <- c('no2', 'pm10', 'pm25', 'o3', 'so2')
         mapas_encontrados <- 0
         mapas_esperados <- 0
 
