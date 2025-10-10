@@ -32,10 +32,12 @@ dir.create("app/www/horas", showWarnings = FALSE, recursive = TRUE)
 
 # Obtener horas únicas
 horas_unicas <- sort(unique(datos$fecha_hora))
-contaminantes <- c("Dióxido de Nitrógeno", "Partículas < 10 µm", "Ozono")
+# 5 contaminantes ICA oficiales
+contaminantes <- c("Dióxido de Nitrógeno", "Partículas < 10 µm", "Partículas < 2.5 µm",
+                   "Ozono", "Dióxido de Azufre")
 
 cat("📅 Horas encontradas:", length(horas_unicas), "\n")
-cat("🏭 Contaminantes:", paste(contaminantes, collapse = ", "), "\n")
+cat("🏭 Contaminantes ICA:", paste(contaminantes, collapse = ", "), "\n")
 
 # Función para generar gráfico por hora y contaminante  
 generar_grafico_hora <- function(datos_hora, contaminante, hora_actual) {
@@ -56,8 +58,10 @@ generar_grafico_hora <- function(datos_hora, contaminante, hora_actual) {
   # Definir breaks personalizados según contaminante
   breaks_y <- switch(contaminante,
     "Dióxido de Nitrógeno" = seq(0, 200, by = 25),
-    "Partículas < 10 µm" = seq(0, 150, by = 20), 
+    "Partículas < 10 µm" = seq(0, 150, by = 20),
+    "Partículas < 2.5 µm" = seq(0, 100, by = 15),
     "Ozono" = seq(0, 200, by = 25),
+    "Dióxido de Azufre" = seq(0, 150, by = 20),
     seq(0, 200, by = 25) # default
   )
   
@@ -146,8 +150,10 @@ for(contaminante in contaminantes) {
   # Mapear nombre para archivo
   cont_archivo <- switch(contaminante,
     "Dióxido de Nitrógeno" = "no2",
-    "Partículas < 10 µm" = "pm10", 
-    "Ozono" = "o3"
+    "Partículas < 10 µm" = "pm10",
+    "Partículas < 2.5 µm" = "pm25",
+    "Ozono" = "o3",
+    "Dióxido de Azufre" = "so2"
   )
   
   # Procesar primeras 10 horas (para no crear demasiados archivos)
