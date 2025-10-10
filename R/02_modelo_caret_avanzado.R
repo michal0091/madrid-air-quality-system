@@ -102,33 +102,48 @@ cargar_datos_historicos_avanzado <- function(usar_fallback = FALSE) {
     
     log_success("✅ Conexión establecida")
     
-    # Query optimizada para 10 años de datos
+    # Query optimizada para 10 años de datos CON DATOS METEOROLÓGICOS REALES
     query_historica <- glue("
-      SELECT 
+      SELECT
         fm.fecha_hora,
         fm.valor_medido as valor_medio,
         fm.id_magnitud,
         de.id_estacion,
-        CAST(de.\"LATITUD\" AS NUMERIC) as latitud,
-        CAST(de.\"LONGITUD\" AS NUMERIC) as longitud,
+        de.\"LONGITUD\" as longitud,
+        de.\"LATITUD\" as latitud,
         dm.descripcion as contaminante,
-        dm.unidad,
-        de.\"NOMBRE\" as nombre_estacion,
-        de.\"TIPO_ESTACION\" as tipo_estacion,
+        dm.unidad_medida as unidad,
+        de.nombre_estacion,
+        de.tipo_estacion,
         EXTRACT(YEAR FROM fm.fecha_hora) as año,
         EXTRACT(MONTH FROM fm.fecha_hora) as mes,
         EXTRACT(DAY FROM fm.fecha_hora) as dia,
         EXTRACT(HOUR FROM fm.fecha_hora) as hora,
         EXTRACT(DOY FROM fm.fecha_hora) as dia_año,
-        EXTRACT(DOW FROM fm.fecha_hora) as dia_semana
+        EXTRACT(DOW FROM fm.fecha_hora) as dia_semana,
+        -- DATOS METEOROLÓGICOS REALES DE AEMET
+        DATE(fm.fecha_hora) as fecha,
+        fmd.temp_media_c,
+        fmd.temp_maxima_c,
+        fmd.temp_minima_c,
+        fmd.precipitacion_mm,
+        fmd.vel_viento_media_ms,
+        fmd.dir_viento_grados,
+        fmd.presion_maxima_hpa,
+        fmd.presion_minima_hpa,
+        fmd.humedad_media_pct,
+        fmd.humedad_maxima_pct,
+        fmd.humedad_minima_pct
       FROM fact_mediciones fm
       JOIN dim_estaciones de ON fm.id_estacion = de.id_estacion
       JOIN dim_magnitudes dm ON fm.id_magnitud = dm.id_magnitud
-      WHERE fm.fecha_hora >= '{RANGO_TEMPORAL$fecha_inicio}' 
+      LEFT JOIN fact_meteo_diaria fmd ON DATE(fm.fecha_hora) = fmd.fecha
+      WHERE fm.fecha_hora >= '{RANGO_TEMPORAL$fecha_inicio}'
         AND fm.fecha_hora <= '{RANGO_TEMPORAL$fecha_fin} 23:59:59'
         AND fm.valor_medido IS NOT NULL
         AND fm.valor_medido >= 0
-        AND dm.descripcion IN ('Dióxido de Nitrógeno', 'Partículas < 10 µm', 'Ozono')
+        AND dm.descripcion IN ('Dióxido de Nitrógeno', 'Partículas < 10 µm', 'Partículas < 2.5 µm', 'Ozono', 'Dióxido de Azufre')
+        AND fmd.temp_media_c IS NOT NULL  -- Solo registros con datos meteorológicos
       ORDER BY fm.fecha_hora DESC
     ")
     
@@ -161,51 +176,106 @@ cargar_datos_historicos_avanzado <- function(usar_fallback = FALSE) {
 
 # 4. FUNCIÓN PARA PROCESAR DATOS HISTÓRICOS ----
 procesar_datos_historicos <- function(datos_raw) {
-  log_info("Procesando datos históricos...")
-  
-  # Agregar datos meteorológicos históricos realistas
+  log_info("Procesando datos históricos CON DATOS METEOROLÓGICOS REALES...")
+
+  # Cargar utilidades de expansión horaria si existen
+  if(file.exists("R/utils_meteo_horario.R")) {
+    source("R/utils_meteo_horario.R")
+  }
+
+  # Verificar disponibilidad de datos meteorológicos
+  n_sin_meteo <- sum(is.na(datos_raw$temp_media_c))
+  pct_sin_meteo <- round(100 * n_sin_meteo / nrow(datos_raw), 1)
+
+  log_info("Datos meteorológicos AEMET disponibles: {nrow(datos_raw) - n_sin_meteo}/{nrow(datos_raw)} ({100-pct_sin_meteo}%)")
+
+  if(pct_sin_meteo > 50) {
+    log_warn("⚠️ Más del 50% de registros sin datos meteorológicos AEMET")
+  }
+
+  # PASO 1: Preparar datos diarios únicos de meteorología para expansión horaria
+  datos_meteo_diarios <- datos_raw %>%
+    select(fecha, temp_media_c, temp_maxima_c, temp_minima_c,
+           precipitacion_mm, vel_viento_media_ms, dir_viento_grados,
+           presion_maxima_hpa, presion_minima_hpa,
+           humedad_media_pct, humedad_maxima_pct, humedad_minima_pct) %>%
+    distinct(fecha, .keep_all = TRUE) %>%
+    filter(!is.na(temp_media_c))  # Solo días con datos meteorológicos
+
+  log_info("Días únicos con datos meteorológicos: {nrow(datos_meteo_diarios)}")
+
+  # PASO 2: Expandir datos diarios a horarios usando interpolación lineal
+  if(exists("expandir_meteo_lineal")) {
+    log_info("Expandiendo datos meteorológicos diarios a horarios (interpolación lineal)...")
+    datos_meteo_horarios <- expandir_meteo_lineal(datos_meteo_diarios)
+
+    # Renombrar columnas para consistencia
+    datos_meteo_horarios <- datos_meteo_horarios %>%
+      rename(
+        temp_media_c = temp_c,
+        humedad_media_pct = humedad_pct,
+        presion_maxima_hpa = presion_hpa,
+        vel_viento_media_ms = vel_viento_ms
+      ) %>%
+      mutate(
+        # Asegurar que dir_viento_grados existe (puede no estar en la expansión)
+        dir_viento_grados = if("dir_viento_grados" %in% names(.)) dir_viento_grados else 200
+      )
+
+    log_success("✅ Expansión horaria completada: {nrow(datos_meteo_horarios)} registros horarios")
+
+  } else {
+    log_warn("⚠️ Función expandir_meteo_lineal no disponible, usando interpolación simple...")
+
+    # Fallback: interpolación simple hora a hora
+    datos_meteo_horarios <- datos_meteo_diarios %>%
+      rowwise() %>%
+      do({
+        fecha_base <- .$fecha
+
+        # Interpolación lineal simple entre min y max
+        temp_horaria <- seq(.$temp_minima_c, .$temp_maxima_c, length.out = 24)
+        humedad_horaria <- seq(.$humedad_maxima_pct, .$humedad_minima_pct, length.out = 24)
+        presion_horaria <- rep((.$presion_maxima_hpa + .$presion_minima_hpa) / 2, 24)
+
+        data.frame(
+          fecha_hora = as.POSIXct(paste(fecha_base, sprintf("%02d:00:00", 0:23)), tz = "UTC"),
+          fecha = fecha_base,
+          hora = 0:23,
+          temp_media_c = temp_horaria,
+          humedad_media_pct = humedad_horaria,
+          presion_maxima_hpa = presion_horaria,
+          vel_viento_media_ms = .$vel_viento_media_ms,
+          dir_viento_grados = .$dir_viento_grados,
+          precipitacion_mm = .$precipitacion_mm / 24  # Distribuir uniformemente
+        )
+      }) %>%
+      ungroup()
+  }
+
+  # PASO 3: Hacer JOIN entre mediciones de contaminantes y meteorología horaria
+  # Nota: JOIN solo por fecha + hora (ignorando minutos/segundos)
   datos_completos <- datos_raw %>%
-    mutate(
-      fecha = as.Date(fecha_hora),
-      
-      # Variables meteorológicas basadas en patrones históricos de Madrid
-      # Temperatura con patrón estacional y diurno
-      temp_base_estacional = 15 + 12*sin((dia_año-80)*2*pi/365),
-      temp_variacion_diurna = 8*sin((hora-6)*pi/12),
-      temp_media_c = pmax(pmin(temp_base_estacional + temp_variacion_diurna + 
-                              rnorm(n(), 0, 2), 45), -5),
-      
-      # Precipitación con patrón estacional (más en otoño/invierno)
-      prob_lluvia = pmax(0.05, 0.15*sin((dia_año-180)*2*pi/365) + 0.1),
-      precipitacion_mm = ifelse(runif(n()) < prob_lluvia, rexp(n(), 1), 0),
-      
-      # Viento con patrones típicos de Madrid
-      vel_viento_base = 2.5 + abs(rnorm(n(), 0, 1.2)),
-      vel_viento_diurno = 0.8*sin((hora-14)*pi/12),
-      vel_viento_media_ms = pmax(vel_viento_base + vel_viento_diurno, 0),
-      
-      # Dirección viento predominante SW en Madrid
-      dir_viento_base = 220 + 40*sin((dia_año-100)*2*pi/365),
-      dir_viento_grados = (dir_viento_base + rnorm(n(), 0, 45)) %% 360,
-      
-      # Presión atmosférica con patrón estacional
-      presion_base = 1013 + 8*sin((dia_año-30)*2*pi/365),
-      presion_maxima_hpa = pmax(pmin(presion_base + rnorm(n(), 0, 8), 1040), 990),
-      
-      # Humedad relativa
-      humedad_base = 60 + 25*sin((dia_año-180)*2*pi/365),
-      humedad_diurna = -15*sin((hora-6)*pi/12),
-      humedad_media_pct = pmax(pmin(humedad_base + humedad_diurna + 
-                               rnorm(n(), 0, 8), 100), 10)
+    select(-temp_media_c, -temp_maxima_c, -temp_minima_c,
+           -precipitacion_mm, -vel_viento_media_ms, -dir_viento_grados,
+           -presion_maxima_hpa, -presion_minima_hpa,
+           -humedad_media_pct, -humedad_maxima_pct, -humedad_minima_pct) %>%
+    left_join(
+      datos_meteo_horarios %>% select(-fecha_hora),  # Quitar fecha_hora para evitar conflicto
+      by = c("fecha", "hora"),
+      relationship = "many-to-one"
     ) %>%
+    # Filtrar observaciones sin datos meteorológicos
+    filter(!is.na(temp_media_c)) %>%
     # Convertir a objeto espacial
     st_as_sf(coords = c("longitud", "latitud"), crs = 4326)
-  
-  log_info("Datos históricos procesados: {nrow(datos_completos)} observaciones")
+
+  log_info("Datos históricos procesados con meteorología REAL: {nrow(datos_completos)} observaciones")
   log_info("Período: {min(datos_completos$fecha)} a {max(datos_completos$fecha)}")
   log_info("Contaminantes: {paste(unique(datos_completos$contaminante), collapse=', ')}")
   log_info("Estaciones: {length(unique(datos_completos$id_estacion))}")
-  
+  log_info("Rango temperaturas AEMET: {round(min(datos_completos$temp_media_c, na.rm=TRUE), 1)}°C - {round(max(datos_completos$temp_media_c, na.rm=TRUE), 1)}°C")
+
   return(datos_completos)
 }
 
@@ -232,8 +302,8 @@ generar_datos_historicos_simulados <- function() {
   horas_muestra <- sample(0:23, n_observaciones, replace = TRUE)
   fechas_hora <- as.POSIXct(paste(fechas_muestra, sprintf("%02d:00:00", horas_muestra)))
   
-  # Contaminantes principales
-  contaminantes <- c("Dióxido de Nitrógeno", "Partículas < 10 µm", "Ozono")
+  # Contaminantes ICA (5 requeridos para índice oficial)
+  contaminantes <- c("Dióxido de Nitrógeno", "Partículas < 10 µm", "Partículas < 2.5 µm", "Ozono", "Dióxido de Azufre")
   
   datos_simulados <- data.frame(
     fecha_hora = fechas_hora,
@@ -264,11 +334,13 @@ generar_datos_historicos_simulados <- function() {
       humedad_media_pct = pmax(pmin(60 + 20*sin((dia_año-180)*2*pi/365) - 
                                    12*sin((hora-6)*pi/12) + rnorm(n(), 0, 10), 100), 10),
       
-      # Valores de contaminantes con patrones realistas
+      # Valores de contaminantes con patrones realistas (basados en datos Madrid)
       base_contaminante = case_when(
-        contaminante == "Dióxido de Nitrógeno" ~ 35,
-        contaminante == "Partículas < 10 µm" ~ 25,
-        contaminante == "Ozono" ~ 65
+        contaminante == "Dióxido de Nitrógeno" ~ 35,      # NO2: 20-60 µg/m³
+        contaminante == "Partículas < 10 µm" ~ 25,        # PM10: 15-40 µg/m³
+        contaminante == "Partículas < 2.5 µm" ~ 15,       # PM2.5: 10-25 µg/m³
+        contaminante == "Ozono" ~ 65,                     # O3: 40-100 µg/m³
+        contaminante == "Dióxido de Azufre" ~ 8           # SO2: 2-15 µg/m³ (bajo en Madrid)
       ),
       
       factor_estacional = sin((dia_año-100)*2*pi/365),
@@ -392,9 +464,9 @@ entrenar_modelo_caret_avanzado <- function(datos, contaminante = "Dióxido de Ni
   # Preparar datos para CARET
   datos_ml <- datos_enriquecidos %>%
     st_drop_geometry() %>%
-    # Eliminar variables de identificación
-    select(-any_of(c("fecha_hora", "id_estacion", "nombre_estacion", "contaminante", 
-                     "fecha", "unidad", "id_magnitud"))) %>%
+    # Eliminar variables de identificación Y categóricas problemáticas
+    select(-any_of(c("fecha_hora", "id_estacion", "nombre_estacion", "contaminante",
+                     "fecha", "unidad", "id_magnitud", "tipo_estacion"))) %>%
     # Limpiar datos faltantes inteligentemente
     filter(
       !is.na(valor_medio),
@@ -425,7 +497,9 @@ entrenar_modelo_caret_avanzado <- function(datos, contaminante = "Dióxido de Ni
       presion_anomalia = presion_maxima_hpa - 1013
     ) %>%
     # Solo observaciones completas
-    filter(complete.cases(.))
+    filter(complete.cases(.)) %>%
+    # Eliminar cualquier variable con un solo nivel único (causa error de contrasts)
+    select(where(~n_distinct(.) > 1))
   
   log_info("Datos preparados para ML: {nrow(datos_ml)} obs, {ncol(datos_ml)-1} predictores")
   
@@ -547,7 +621,7 @@ entrenar_modelo_caret_avanzado <- function(datos, contaminante = "Dióxido de Ni
 }
 
 # 8. FUNCIÓN PRINCIPAL EJECUTORA ----
-ejecutar_modelado_avanzado <- function(contaminantes = c("Dióxido de Nitrógeno", "Partículas < 10 µm", "Ozono"),
+ejecutar_modelado_avanzado <- function(contaminantes = c("Dióxido de Nitrógeno", "Partículas < 10 µm", "Partículas < 2.5 µm", "Ozono", "Dióxido de Azufre"),
                                       usar_fallback = TRUE) {
   
   log_info("🚀 === INICIANDO MODELADO CARET AVANZADO ===")
@@ -698,8 +772,8 @@ test_modelo_avanzado <- function() {
 
 # 10. EJECUCIÓN ----
 if(!interactive()) {
-  # Modo no interactivo - ejecutar modelado completo
-  resultado <- ejecutar_modelado_avanzado(usar_fallback = TRUE)
+  # Modo no interactivo - ejecutar modelado completo CON DATOS REALES
+  resultado <- ejecutar_modelado_avanzado(usar_fallback = FALSE)
   
   if(!is.null(resultado) && resultado$estadisticas$r2_promedio > 0.5) {
     quit(status = 0)  # Éxito
@@ -710,7 +784,11 @@ if(!interactive()) {
   # Modo interactivo
   log_info("📋 Script cargado en modo interactivo")
   log_info("Funciones disponibles:")
-  log_info("  - ejecutar_modelado_avanzado(): Entrenamiento completo")
+  log_info("  - ejecutar_modelado_avanzado(usar_fallback = FALSE): Entrenamiento completo con datos REALES")
+  log_info("  - ejecutar_modelado_avanzado(usar_fallback = TRUE): Test con datos simulados")
   log_info("  - test_modelo_avanzado(): Test rápido")
   log_info("Período configurado: {RANGO_TEMPORAL$descripcion}")
+  log_info("")
+  log_info("💡 Para entrenar con datos REALES ejecuta:")
+  log_info("   resultado <- ejecutar_modelado_avanzado(usar_fallback = FALSE)")
 }
