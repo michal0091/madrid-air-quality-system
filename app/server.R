@@ -233,11 +233,13 @@ server <- function(input, output, session) {
     # Generar JavaScript con horas dinámicas
     horas_js <- paste0("'", horas_formateadas, "'", collapse = ", ")
 
-    # Mapear nombres de contaminantes a archivos
+    # Mapear nombres de contaminantes a archivos (5 ICA contaminantes)
     cont_archivo <- switch(input$contaminante_sel,
       "Dióxido de Nitrógeno" = "no2",
       "Partículas < 10 µm" = "pm10",
+      "Partículas < 2.5 µm" = "pm25",
       "Ozono" = "o3",
+      "Dióxido de Azufre" = "so2",
       "no2"  # default
     )
 
@@ -368,25 +370,27 @@ server <- function(input, output, session) {
   observeEvent(input$contaminante_sel, {
     # Evitar ejecutar en la primera carga
     if(is.null(input$contaminante_sel)) return()
-    # Mapear nombres de contaminantes a archivos
+    # Mapear nombres de contaminantes a archivos (5 ICA contaminantes)
     cont_archivo <- switch(input$contaminante_sel,
       "Dióxido de Nitrógeno" = "no2",
-      "Partículas < 10 µm" = "pm10", 
+      "Partículas < 10 µm" = "pm10",
+      "Partículas < 2.5 µm" = "pm25",
       "Ozono" = "o3",
+      "Dióxido de Azufre" = "so2",
       "no2"  # default
     )
-    
+
     # Generar lista de URLs de imágenes
     urls_imagenes <- paste0("horas/", cont_archivo, "_hora_", sprintf("%02d", 1:10), ".png")
     urls_js <- paste0("'", urls_imagenes, "'", collapse = ", ")
-    
+
     # Ejecutar JavaScript para actualizar las imágenes de gráficos
-    session$sendCustomMessage(type = 'actualizarAnimacion', 
+    session$sendCustomMessage(type = 'actualizarAnimacion',
                               message = list(imagenes = urls_imagenes))
-    
+
     # También actualizar mapas animados
     urls_mapas <- paste0("mapas_horas/mapa_", cont_archivo, "_hora_", sprintf("%02d", 1:10), ".png")
-    session$sendCustomMessage(type = 'actualizarAnimacionMapa', 
+    session$sendCustomMessage(type = 'actualizarAnimacionMapa',
                               message = list(mapas = urls_mapas))
   })
   
@@ -411,11 +415,13 @@ server <- function(input, output, session) {
     # Generar JavaScript con horas dinámicas
     horas_js_mapa <- paste0("'", horas_formateadas, "'", collapse = ", ")
 
-    # Mapear nombres de contaminantes a archivos
+    # Mapear nombres de contaminantes a archivos (5 ICA contaminantes)
     cont_archivo <- switch(input$contaminante_sel,
       "Dióxido de Nitrógeno" = "no2",
       "Partículas < 10 µm" = "pm10",
+      "Partículas < 2.5 µm" = "pm25",
       "Ozono" = "o3",
+      "Dióxido de Azufre" = "so2",
       "no2"  # default
     )
 
@@ -604,11 +610,13 @@ server <- function(input, output, session) {
           hora_str == "20:00" ~ "Noche\n(20:00)",
           TRUE ~ hora_str
         ),
-        # Abreviar nombres de contaminantes
+        # Abreviar nombres de contaminantes (5 ICA contaminantes)
         cont_corto = case_when(
           contaminante == "Dióxido de Nitrógeno" ~ "NO₂",
           contaminante == "Partículas < 10 µm" ~ "PM10",
+          contaminante == "Partículas < 2.5 µm" ~ "PM2.5",
           contaminante == "Ozono" ~ "O₃",
+          contaminante == "Dióxido de Azufre" ~ "SO₂",
           TRUE ~ contaminante
         )
       )
@@ -675,11 +683,13 @@ server <- function(input, output, session) {
   
   # Mapa estático de Madrid usando imágenes pregeneradas
   output$mapa_estatico_madrid <- renderImage({
-    # Mapear nombres de contaminantes a archivos de mapa
+    # Mapear nombres de contaminantes a archivos de mapa (5 ICA contaminantes)
     cont_archivo <- switch(input$contaminante_sel,
       "Dióxido de Nitrógeno" = "no2",
-      "Partículas < 10 µm" = "pm10", 
+      "Partículas < 10 µm" = "pm10",
+      "Partículas < 2.5 µm" = "pm25",
       "Ozono" = "o3",
+      "Dióxido de Azufre" = "so2",
       "no2"  # default
     )
     
@@ -1289,17 +1299,19 @@ server <- function(input, output, session) {
       paste("Pollutants tracked:", length(unique(datos$contaminante))),
       "",
       "MODEL INFORMATION:",
-      "- Algorithm: CARET Random Forest",
-      "- R² performance: > 92%",
+      "- Algorithm: RANGER Random Forest (UTM projection)",
+      "- R² performance: > 75% (spatial models)",
       "- Training data: 10 years historical",
-      "- Variables: 34 predictors",
+      "- Variables: 34 predictors including UTM coordinates",
       "",
       paste("Last prediction update:", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
       "",
-      "EU AIR QUALITY STANDARDS:",
-      "- NO₂: Good <40, Moderate <100, Poor <200 µg/m³",
-      "- PM10: Good <25, Moderate <50, Poor <90 µg/m³", 
-      "- O₃: Good <100, Moderate <140, Poor <180 µg/m³",
+      "WHO AIR QUALITY STANDARDS (2021) - 5 ICA CONTAMINANTS:",
+      "- NO₂: Good <25, Moderate <50, Poor <100, Very Poor <200 µg/m³",
+      "- PM10: Good <20, Moderate <40, Poor <75, Very Poor <150 µg/m³",
+      "- PM2.5: Good <10, Moderate <25, Poor <50, Very Poor <75 µg/m³",
+      "- O₃: Good <80, Moderate <120, Poor <160, Very Poor <200 µg/m³",
+      "- SO₂: Good <20, Moderate <50, Poor <125, Very Poor <350 µg/m³",
       sep = "\n"
     )
     

@@ -47,11 +47,11 @@ Sys.setenv(TZ = "Europe/Madrid")
 ESTANDARES_OMS_2021 <- list(
   "Dióxido de Nitrógeno" = list(
     media_anual_oms = 10,     # µg/m³ - Recomendación OMS 2021
-    media_24h_oms = 25,       # µg/m³ - Recomendación OMS 2021  
+    media_24h_oms = 25,       # µg/m³ - Recomendación OMS 2021
     media_1h_oms = 200,       # µg/m³ - Recomendación OMS 2021
     bueno = 25,               # Verde (mejorado vs EU)
     moderado = 50,            # Amarillo
-    malo = 100,               # Naranja  
+    malo = 100,               # Naranja
     muy_malo = 200            # Rojo
   ),
   "Partículas < 10 µm" = list(
@@ -59,8 +59,16 @@ ESTANDARES_OMS_2021 <- list(
     media_24h_oms = 45,       # µg/m³ - Recomendación OMS 2021
     bueno = 20,               # Verde
     moderado = 40,            # Amarillo
-    malo = 75,                # Naranja  
+    malo = 75,                # Naranja
     muy_malo = 150            # Rojo
+  ),
+  "Partículas < 2.5 µm" = list(
+    media_anual_oms = 5,      # µg/m³ - Recomendación OMS 2021
+    media_24h_oms = 15,       # µg/m³ - Recomendación OMS 2021
+    bueno = 10,               # Verde
+    moderado = 25,            # Amarillo (ajustado para incluir 15-25 range)
+    malo = 50,                # Naranja
+    muy_malo = 75             # Rojo
   ),
   "Ozono" = list(
     media_8h_oms = 100,       # µg/m³ - Recomendación OMS 2021 (temporada alta)
@@ -69,6 +77,14 @@ ESTANDARES_OMS_2021 <- list(
     moderado = 120,           # Amarillo
     malo = 160,               # Naranja
     muy_malo = 200            # Rojo
+  ),
+  "Dióxido de Azufre" = list(
+    media_24h_oms = 40,       # µg/m³ - Recomendación OMS 2021
+    media_10min_oms = 500,    # µg/m³ - Recomendación OMS 2021
+    bueno = 20,               # Verde
+    moderado = 50,            # Amarillo
+    malo = 125,               # Naranja
+    muy_malo = 350            # Rojo
   )
 )
 
