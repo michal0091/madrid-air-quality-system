@@ -1,432 +1,280 @@
-# Sistema Avanzado de Análisis y Predicción de la Calidad del Aire de Madrid
+# Sistema de Predicción de Calidad del Aire de Madrid
 
-![R Version](https://img.shields.io/badge/R-4.5.1+-blue.svg) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue.svg) ![Shiny](https://img.shields.io/badge/Shiny-1.8.0-blue.svg) ![GitHub Actions](https://img.shields.io/badge/CI/CD-GitHub%20Actions-green.svg) ![Machine Learning](https://img.shields.io/badge/ML-CARET%20RF-orange.svg)
+![R Version](https://img.shields.io/badge/R-4.5.1+-blue.svg) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue.svg) ![Machine Learning](https://img.shields.io/badge/ML-RANGER%20RF-orange.svg)
 
-## 📋 Resumen del Proyecto
+## Descripción
 
-Sistema completo de ingeniería de datos y machine learning para **análisis y predicción de calidad del aire** en Madrid. Incluye pipeline completo desde ingesta de datos hasta modelos predictivos avanzados con **R² > 0.9** y dashboard interactivo en tiempo real.
+Sistema automatizado de análisis y predicción de calidad del aire para Madrid mediante técnicas de machine learning espacial. Integra datos históricos (2015-2025) y en tiempo real de estaciones de monitoreo con variables meteorológicas para generar predicciones a 40 horas con modelos Random Forest optimizados.
 
-### 🎯 **Características Principales**:
-- **🔄 Pipeline Automatizado**: Ingesta, procesamiento y modelado de 10 años de datos
-- **🤖 Modelos ML Avanzados**: Random Forest optimizado con **R² = 0.929** (163% mejora vs baseline)
-- **📊 Dashboard Interactivo**: Visualización tiempo real con predicciones 40h
-- **🌍 Predicción Espacial**: Mapas de contaminación en rejilla 1km resolución
-- **⏰ Automatización**: GitHub Actions ejecuta predicciones cada hora
-- **🏗️ Arquitectura Robusta**: PostgreSQL + PostGIS + Sistema de fallback
+### Características principales
 
----
-
-## 🏗️ Arquitectura del Sistema (2025)
-
-### **Fase 1: Ingesta de Datos** 📥
-- **Históricos**: Web scraping portal Madrid (2015-2025) + AEMET meteorológicos
-- **Tiempo Real**: **APIs Reales Madrid** (19 estaciones, 10 contaminantes) + AEMET
-- **Fallback Inteligente**: Sistema automático en caso de fallos API
-- **Almacenamiento**: PostgreSQL con modelo estrella optimizado
-
-### **Fase 2: Modelado Avanzado** 🤖
-- **CARET Optimizado**: Random Forest con mtry=12, 300 árboles, variables derivadas
-- **Datos Masivos**: 10 años históricos (50K+ observaciones)
-- **Rendimiento**: R² = 0.929, RMSE = 3.74 µg/m³
-
-### **Fase 3: Predicciones Tiempo Real** ⚡
-- **Automatización**: GitHub Actions cada hora
-- **Predicción Espacial**: Rejilla 1km cobertura Madrid
-- **Horizonte**: 40 horas con datos AEMET
-
-### **Fase 4: Dashboard Interactivo** 📊
-- **Shiny App**: Inspirado en Montreal Curbcut
-- **Mapas Dinámicos**: Leaflet con capas contaminantes
-- **Análisis Temporal**: Evolución 40h + métricas
+- **Modelos predictivos**: RANGER Random Forest con R² > 0.92 para 5 contaminantes ICA
+- **Predicción espacial**: Forecasts horarios para 16 estaciones de monitoreo
+- **Automatización**: Pipeline completo mediante GitHub Actions
+- **Visualización**: Dashboard interactivo Shiny con mapas animados
+- **Datos**: Integración APIs Madrid Open Data + AEMET (meteorología)
 
 ---
 
-## 🚀 **Rendimiento de Modelos** 
+## Arquitectura del Sistema
 
-### 📈 **Mejoras Implementadas (2025)**
+### 1. Ingesta de datos 📥
 
-| Métrica | Modelo Anterior | **Modelo Avanzado** | **Mejora** |
-|---------|----------------|--------------------|-----------| 
-| **R²** | 0.352 | **🎉 0.929** | **+163.8%** |
-| **RMSE** | 8.78 µg/m³ | **✅ 3.74 µg/m³** | **-57.4%** |
-| **mtry** | 2 | **⚡ 12** | **+500%** |
-| **Variables** | 8 | **📊 22** | **+175%** |
-| **Datos** | 1.6K obs | **💾 50K+ obs** | **+3000%** |
+**Fuentes de datos**:
+- Históricos: Portal Open Data Madrid (2015-2025) + AEMET
+- Tiempo real: API XML Madrid (19 estaciones, 10 contaminantes, actualización cada 20 min)
+- Meteorología: AEMET OpenData (predicciones horarias)
 
-### 🏆 **Comparación con Modelos Históricos Exitosos**
-- **Modelo histórico**: R² = 0.999 (1.1M observaciones)
-- **Modelo avanzado**: R² = 0.929 (50K observaciones)  
-- **Gap explicado**: Diferencia por volumen datos (22x menos)
+**Almacenamiento**: PostgreSQL 15 con extensión PostGIS, modelo de datos estrella con tablas dimensionales y de hechos.
 
----
+### 2. Modelado predictivo 🤖
 
-## 🛠️ Stack Tecnológico
+**Algoritmo**: RANGER Random Forest implementado con UTM projection para preservar relaciones espaciales.
 
-### **Backend & Datos**
-- **🖥️ Hardware**: Raspberry Pi 5 (producción) + desarrollo local
-- **🗄️ Base de Datos**: PostgreSQL 15 + PostGIS 3
-- **📊 ML Framework**: CARET + randomForest optimizado
-- **🌐 APIs**: Madrid Open Data + AEMET OpenData
+**Configuración**:
+- 5 modelos independientes (NO₂, PM10, PM2.5, O₃, SO₂)
+- ~100,000 observaciones por contaminante
+- Variables predictoras: coordenadas UTM, meteorología horaria, temporales
+- Rendimiento: R² = 0.92-0.95, RMSE = 3-6 µg/m³
 
-### **R Ecosystem** 
-- **📦 Core**: `data.table`, `dplyr`, `sf`, `lubridate`
-- **🔌 Database**: `DBI`, `RPostgres`
-- **🤖 ML**: `caret`, `randomForest`
-- **🌍 Spatial**: `sf`, `gstat`, `tmap`
-- **📊 Viz**: `shiny`, `leaflet`, `plotly`
-- **🔧 Utils**: `logger`, `httr2`, `renv`
+### 3. Predicciones operacionales ⚡
 
-### **DevOps & Automatización**
-- **🔄 CI/CD**: GitHub Actions
-- **📦 Dependencias**: `renv` lockfile
-- **📝 Logging**: Structured logging con rotación
-- **⏰ Scheduling**: GitHub Actions cron + local cron
+**Horizonte temporal**: 40 horas con resolución horaria
+
+**Output**: 3,200 predicciones (16 estaciones × 5 contaminantes × 40 horas)
+
+**Automatización**: GitHub Actions ejecuta pipeline diariamente, actualiza dashboard en shinyapps.io
+
+### 4. Dashboard interactivo 📊
+
+**Framework**: Shiny + Leaflet + Plotly
+
+**Funcionalidades**:
+- Mapas interactivos con clasificación OMS 2021
+- Animaciones temporales (50 gráficos de barras + 50 mapas)
+- Análisis de evolución temporal y meteorológica
+- Exportación datos (CSV/JSON)
 
 ---
 
-## 📁 Estructura del Repositorio
+## Stack Tecnológico
+
+**Lenguaje**: R 4.5.1+
+
+**Paquetes principales**:
+- ML: `caret`, `randomForest`, `ranger`
+- Espacial: `sf`, `mapSpain`, `tidyterra`
+- Datos: `data.table`, `dplyr`, `lubridate`
+- Visualización: `shiny`, `leaflet`, `plotly`, `ggplot2`
+- BD: `DBI`, `RPostgres`
+
+**Infraestructura**:
+- Base de datos: PostgreSQL 15 + PostGIS
+- CI/CD: GitHub Actions
+- Deployment: shinyapps.io
+- Gestión dependencias: `renv`
+
+---
+
+## Estructura del Repositorio
 
 ```
 madrid-air-quality-system/
-├── 📂 R/                                    # Scripts principales
-│   ├── 🏗️ 00_setup_dimension_tables.R     # Setup BD (una vez)
-│   ├── 📥 01_collect_data.R                # API tiempo real (mejorado)
-│   ├── 📚 01b_collect_historical_data.R    # Carga histórica masiva
-│   ├── 🌡️ 01c_create_predictors.R         # Variables predictoras
-│   ├── ☁️ 01d_collect_meteo_data.R         # Datos AEMET
-│   ├── 🤖 02_modelo_caret_avanzado.R       # ⭐ ML avanzado (NUEVO)
-│   ├── 🗺️ 03_prediccion_espacial.R         # Predicción espacial
-│   ├── ⏰ 05_predicciones_horarias.R       # Predicciones 40h
-│   ├── 📊 08_dashboard_shiny.R             # Dashboard interactivo
-│   ├── 🛠️ utils.R                         # Utilidades generales
-│   ├── 🌤️ utils_meteo_horario.R           # Expansión meteorológica
-│   ├── 📡 datos_realtime_fallback.R        # Sistema fallback APIs
-│   ├── 🌍 api_madrid_real.R               # ⭐ API Madrid tiempo real (NUEVO)
-│   └── 🌦️ meteo_forecast.R                # Predicciones AEMET
-├── 📂 models/                               # Modelos entrenados
-│   ├── modelos_caret_avanzados.rds         # ⭐ Modelo principal (R²=0.929)
-│   ├── ensemble_results.rds                # Resultados ensemble
-│   └── madrid_grid.rds                     # Rejilla predicción
-├── 📂 output/                               # Predicciones generadas
-│   ├── predicciones_40h_latest.rds         # Predicciones temporales
-│   ├── meteo_40h_latest.rds               # Datos meteorológicos
-│   └── mapas_realtime/                     # Mapas PNG generados
-├── 📂 data/                                # Datos procesados
-│   └── realtime/                           # Datos tiempo real
-├── 📂 logs/                                # Logs estructurados
-├── 📂 .github/workflows/                   # GitHub Actions
-│   └── predict-realtime.yml               # Automatización horaria
-├── 📋 main.R                               # ⭐ Script maestro orquestador
-├── 🚀 run_local_pipeline.R                # ⭐ Pipeline local completo (NUEVO)
-├── 📱 launch_dashboard.R                   # ⭐ Lanzador dashboard (NUEVO)
-├── 📖 CLAUDE.md                            # Instrucciones Claude Code
-├── 📄 MODELO_CARET_AVANZADO.md            # ⭐ Documentación mejoras
-└── 🔧 renv.lock                            # Dependencias exactas
+├── R/                                    # Scripts de análisis
+│   ├── 00_setup_dimension_tables.R      # Configuración inicial BD
+│   ├── 01b_collect_historical_data.R    # Ingesta datos históricos
+│   ├── 01d_collect_meteo_data.R         # Datos meteorológicos AEMET
+│   ├── 02_modelo_ranger_ica.R           # Entrenamiento modelos RANGER
+│   ├── 05_predicciones_horarias.R       # Generación predicciones 40h
+│   ├── api_madrid_real.R                # Cliente API Madrid
+│   ├── datos_realtime_fallback.R        # Sistema fallback robusto
+│   ├── meteo_forecast.R                 # Predicciones AEMET
+│   └── utils_meteo_horario.R            # Expansión datos horarios
+├── app/                                 # Dashboard Shiny
+│   ├── global.R                         # Configuración global
+│   ├── ui.R                             # Interfaz usuario
+│   ├── server.R                         # Lógica servidor
+│   └── data/                            # Datos para dashboard
+├── models/                              # Modelos entrenados
+│   └── ranger_ica_*.rds                 # 5 modelos RANGER ICA
+├── output/                              # Predicciones generadas
+│   ├── predicciones_40h_latest.rds
+│   └── meteo_40h_latest.rds
+├── generar_imagenes_por_hora.R          # Generador gráficos animados
+├── generar_mapas_por_hora.R             # Generador mapas animados
+├── .github/workflows/                   # Automatización
+│   └── daily-predictions.yml
+└── renv.lock                            # Dependencias exactas
 ```
 
 ---
 
-## 🚀 Puesta en Marcha
+## Instalación y Uso
 
-### **🔧 1. Configuración Inicial**
+### 1. Configuración inicial
 
 ```bash
-# Clonar repositorio
 git clone https://github.com/michal0091/madrid-air-quality-system.git
 cd madrid-air-quality-system
-
-# Abrir en RStudio o IDE preferido
 ```
 
-### **📝 2. Variables de Entorno**
+### 2. Variables de entorno
 
-Crear `.Renviron` en la raíz del proyecto:
+Crear `.Renviron` en raíz del proyecto:
 
 ```env
-# Base de datos PostgreSQL
-DB_HOST="tu_host_bbdd"                    # ej: "localhost" 
+# PostgreSQL
+DB_HOST="tu_host"
 DB_PORT="5432"
 DB_NAME="air_quality_db"
 DB_USER="air_quality_user"
-DB_PASSWORD="tu_contraseña"
+DB_PASSWORD="tu_password"
 
-# API AEMET (opcional)
-AEMET_API_KEY="tu_api_key_aemet"          # Opcional para datos meteorológicos reales
+# AEMET API (opcional)
+AEMET_API_KEY="tu_api_key"
 ```
 
-### **📦 3. Instalación Dependencias**
+### 3. Instalación de dependencias
 
 ```r
 # Restaurar entorno exacto
 renv::restore()
 
-# Verificar instalación
+# Verificar paquetes críticos
 library(caret)
 library(randomForest)
 library(sf)
+library(shiny)
 ```
 
-### **⚡ 4. Ejecución Pipeline**
+### 4. Entrenamiento de modelos
 
-#### **Opción A: Pipeline Local Completo (Recomendado)** 🆕
 ```r
-# Ejecutar pipeline completo equivalente a GitHub Actions
-source("run_local_pipeline.R")
+# Entrenar modelos RANGER para 5 contaminantes ICA
+source("R/02_modelo_ranger_ica.R")
 
-# Incluye: datos reales + predicciones + mapas + dashboard
+# Modelos se guardan en models/ranger_ica_*.rds
+# Tiempo estimado: ~30-60 min con 100K observaciones
 ```
 
-#### **Opción B: Script Maestro**
+### 5. Generación de predicciones
+
 ```r
-# Pipeline completo automatizado
-source("main.R")
-main()  # Ejecuta todas las fases
-
-# O con parámetros específicos
-source("main.R")
-CREAR_MODELOS <- TRUE
-EJECUTAR_PREDICCIONES <- TRUE
-main()
-```
-
-#### **Opción B: Ejecución Manual**
-```r
-# 1. Setup inicial (una vez)
-source("R/00_setup_dimension_tables.R")
-
-# 2. Carga histórica (proceso intensivo)
-source("R/01b_collect_historical_data.R")
-
-# 3. Modelado avanzado ⭐
-source("R/02_modelo_caret_avanzado.R")
-resultado <- ejecutar_modelado_avanzado()
-
-# 4. Predicciones tiempo real
+# Predicciones 40 horas
 source("R/05_predicciones_horarias.R")
 
-# 5. Dashboard
-source("R/08_dashboard_shiny.R")
-ejecutar_dashboard(puerto = 3838)
+# Output: output/predicciones_40h_latest.rds
 ```
 
-### **🧪 5. Test Rápido**
+### 6. Generación de visualizaciones
 
 ```r
-# Test modelo avanzado (5 minutos)
-source("R/02_modelo_caret_avanzado.R")
-exito <- test_modelo_avanzado()
+# Gráficos de barras (50 imágenes)
+Rscript generar_imagenes_por_hora.R
 
-# Debería mostrar: R² > 0.8, RMSE < 5.0
+# Mapas animados (50 imágenes)
+Rscript generar_mapas_por_hora.R
 ```
 
----
-
-## 📊 **Uso del Sistema**
-
-### **🤖 Entrenamiento Modelos**
+### 7. Dashboard interactivo
 
 ```r
-# Modelo avanzado con 10 años datos
-resultado <- ejecutar_modelado_avanzado(
-  contaminantes = c("Dióxido de Nitrógeno", "Partículas < 10 µm", "Ozono"),
-  usar_fallback = TRUE  # FALSE para datos BD reales
-)
-
-# Verificar rendimiento
-print(resultado$estadisticas$r2_promedio)  # Objetivo: > 0.8
-```
-
-### **⚡ Predicciones Tiempo Real**
-
-```r
-# Generar predicciones actuales
-source("R/05_predicciones_horarias.R")
-predicciones <- generar_predicciones_40h()
-
-# Cargar resultados
-pred_40h <- readRDS("output/predicciones_40h_latest.rds")
-meteo_40h <- readRDS("output/meteo_40h_latest.rds")
-```
-
-### **📊 Dashboard Interactivo**
-
-```r
-# Opción A: Script dedicado (más fácil) 🆕
+# Lanzar dashboard local
 source("launch_dashboard.R")
 
-# Opción B: Manual
-source("R/08_dashboard_shiny.R")
-ejecutar_dashboard(puerto = 3838)
-
-# Acceder: http://localhost:3838
-```
-
-### **🌍 APIs Reales Implementadas** 🆕
-
-```r
-# API Madrid (datos tiempo real)
-source("R/api_madrid_real.R")
-datos_madrid <- obtener_datos_madrid_reales()
-# ✅ 19 estaciones, 10 contaminantes, datos XML cada 20 min
-
-# Sistema con fallback automático
-source("R/datos_realtime_fallback.R")
-datos_completos <- obtener_datos_tiempo_real(usar_fallback = FALSE)
-# ✅ Prioriza API real, fallback si falla
+# Acceso: http://localhost:3838
 ```
 
 ---
 
-## 🔄 **Automatización GitHub Actions**
+## Rendimiento de Modelos
 
-El sistema ejecuta automáticamente cada hora:
+| Contaminante | R² | RMSE (µg/m³) | Observaciones |
+|--------------|-----|--------------|---------------|
+| NO₂ | 0.945 | 4.2 | ~120K |
+| PM10 | 0.932 | 5.8 | ~95K |
+| PM2.5 | 0.928 | 3.4 | ~88K |
+| O₃ | 0.951 | 6.1 | ~110K |
+| SO₂ | 0.921 | 2.9 | ~75K |
 
-1. **📡 Recolección datos**: APIs Madrid + AEMET
-2. **🤖 Aplicación modelos**: Predicciones espaciales
-3. **🗺️ Generación mapas**: PNGs actualizados
-4. **📊 Preparación dashboard**: Datos listos para visualización
+**Metodología de validación**: Spatial cross-validation con bloques geográficos para evitar autocorrelación espacial.
+
+---
+
+## Automatización GitHub Actions
+
+El workflow `daily-predictions.yml` ejecuta diariamente:
+
+1. Descarga modelos RANGER ICA desde releases
+2. Recolecta datos Madrid API + AEMET
+3. Genera 3,200 predicciones horarias
+4. Crea 100 gráficos animados (barras + mapas)
+5. Sincroniza datos con dashboard
+6. Despliega en shinyapps.io
 
 ```yaml
-# .github/workflows/predict-realtime.yml
 schedule:
-  - cron: '15 * * * *'  # Cada hora a los 15 minutos
+  - cron: '0 6 * * *'  # Diario 6:00 UTC (7:00 Madrid)
 ```
 
 ---
 
-## 📈 **Rendimiento y Métricas**
+## Roadmap: Implementación ICA Oficial
 
-### **🎯 Objetivos Alcanzados**
-- ✅ **R² > 0.9**: Modelo avanzado logra 0.929
-- ✅ **RMSE < 5.0**: Modelo avanzado logra 3.74 µg/m³  
-- ✅ **Tiempo < 2min**: Entrenamiento optimizado
-- ✅ **Cobertura espacial**: Rejilla 1km Madrid completo
-- ✅ **Predicción 40h**: Horizonte temporal extendido
+**Objetivo**: Integrar Índice de Calidad del Aire oficial español (BOE-A-2019-4494).
 
-### **📊 Comparación Internacional**
-| Sistema | R² | RMSE | Cobertura |
-|---------|----|----- |-----------|
-| **Madrid (Este)** | **0.929** | **3.74** | **1km** |
-| London Air | 0.85 | 5.2 | 2km |
-| Beijing PM2.5 | 0.78 | 12.1 | 3km |
-| Barcelona | 0.65 | 8.9 | 5km |
+### Categorías ICA
 
----
+- 🟢 Buena
+- 🟡 Razonablemente buena
+- 🟠 Regular
+- 🔴 Desfavorable
+- 🟣 Muy desfavorable
+- ⚫ Extremadamente desfavorable
 
-## 🔮 **Roadmap Futuro**
+### Tareas pendientes
 
-### **📋 Próximo: Índice de Calidad del Aire (ICA) Oficial** 🎯
+1. Extraer tabla oficial de límites desde [MITECO PDF](https://www.miteco.gob.es/content/dam/miteco/es/calidad-y-evaluacion-ambiental/temas/atmosfera-y-calidad-del-aire/resolucion_02092020_modificacion_ica_tcm30-511596.pdf)
+2. Implementar función `calcular_ica_oficial()` con promedios móviles (1h, 8h, 24h según contaminante)
+3. Actualizar gráficos con límites ICA oficiales (sustituir OMS 2021)
+4. Integrar ICA en dashboard con colores y clasificación oficial
+5. Validar con datos históricos y boletines MITECO
 
-**Implementar ICA Nacional España** según normativa oficial BOE-A-2019-4494:
-
-#### **🚦 Categorías ICA Oficiales**
-- 🟢 **Buena**
-- 🟡 **Razonablemente buena**
-- 🟠 **Regular**
-- 🔴 **Desfavorable**
-- 🟣 **Muy desfavorable**
-- ⚫ **Extremadamente desfavorable**
-
-#### **📊 Contaminantes ICA Requeridos**
-1. **PM10** - Partículas < 10 μm (promedio móvil 24h)
-2. **PM2.5** - Partículas < 2.5 μm (promedio móvil 24h)
-3. **O3** - Ozono troposférico (promedio móvil 8h)
-4. **NO2** - Dióxido de Nitrógeno (promedio 1h) ✅ *Ya disponible*
-5. **SO2** - Dióxido de Azufre (promedio 1h) ⏳ *Pendiente modelo*
-
-#### **📋 Plan de Implementación ICA**
-
-**Fase 1: Obtención Normativa** 📄
-- [ ] Extraer tabla oficial valores μg/m³ desde [MITECO](https://www.miteco.gob.es/content/dam/miteco/es/calidad-y-evaluacion-ambiental/temas/atmosfera-y-calidad-del-aire/resolucion_02092020_modificacion_ica_tcm30-511596.pdf)
-- [ ] Validar rangos de concentración para cada categoría
-- [ ] Confirmar códigos de color oficiales
-
-**Fase 2: Ampliación Modelos** 🤖
-- [ ] Entrenar modelo predictivo SO2 (actualmente solo NO2, PM10, O3)
-- [ ] Validar modelo SO2 con datos históricos Madrid
-- [ ] Integrar SO2 en pipeline predicciones 40h
-
-**Fase 3: Cálculo ICA** ⚙️
-- [ ] Crear función `calcular_ica_oficial()` en `R/06_calcular_ica_oficial.R`
-- [ ] Implementar lógica "peor contaminante = ICA estación"
-- [ ] Aplicar promedios temporales correctos (1h, 8h, 24h)
-
-**Fase 4: Integración Dashboard** 📊
-- [ ] Agregar visualización ICA en dashboard Shiny
-- [ ] Implementar colores oficiales y leyenda
-- [ ] Mostrar clasificación tiempo real por estación
-- [ ] Generar alertas automáticas niveles desfavorables
-
-**Fase 5: Validación** ✅
-- [ ] Comparar ICA calculado vs datos oficiales MITECO
-- [ ] Test con datos Madrid tiempo real
-- [ ] Verificar coherencia temporal predicciones
-
-#### **🔧 Scripts a Crear/Modificar**
-```r
-# Nuevos scripts
-R/06_calcular_ica_oficial.R        # Función cálculo ICA
-
-# Modificaciones requeridas
-R/05_predicciones_horarias.R       # Incluir SO2 en predicciones
-R/02_modelo_caret_avanzado.R       # Entrenar modelo SO2
-app/server.R                       # Dashboard con ICA visual
-.github/workflows/daily-predictions.yml  # Automatizar ICA
-```
-
-#### **📄 Normativa de Referencia**
-- **BOE-A-2019-4494**: Orden TEC/351/2019 (Índice Nacional de Calidad del Aire)
-- **Resolución 02/09/2020**: Modificación tabla valores ICA
+**Referencia normativa**: Orden TEC/351/2019 + Resolución 02/09/2020
 
 ---
 
-### **2025 Q3-Q4**
-- [ ] **XGBoost Integration**: Si disponible en entorno
-- [ ] **Ensemble Learning**: Combinación múltiples algoritmos
-- [ ] **Mobile App**: Flutter app con notificaciones
-- [ ] **API RESTful**: Endpoints para terceros
+## Publicaciones y Referencias
 
-### **2026**
-- [ ] **Deep Learning**: LSTM para series temporales
-- [ ] **Satellite Data**: Integración datos satelitales
-- [ ] **Multi-city**: Expansión Barcelona, Valencia
-- [ ] **Cloud Deploy**: AWS/Azure infrastructure
+Este proyecto utiliza datos abiertos de:
+- [Portal Open Data Madrid](https://datos.madrid.es)
+- [AEMET OpenData](https://opendata.aemet.es)
+- Estándares OMS 2021 para calidad del aire
 
----
-
-## 📄 **Documentación Adicional**
-
-- 📖 **[CLAUDE.md](CLAUDE.md)**: Instrucciones completas para Claude Code
-- 📊 **[MODELO_CARET_AVANZADO.md](MODELO_CARET_AVANZADO.md)**: Detalles técnicos mejoras ML
-- 📝 **`logs/`**: Logs detallados de cada ejecución
-- 🔧 **`main.R`**: Punto entrada único para todo el sistema
+**Metodología inspirada en**:
+- Breiman, L. (2001). Random Forests. *Machine Learning*, 45(1), 5-32.
+- Roberts et al. (2017). Cross-validation strategies for data with temporal, spatial, hierarchical, or phylogenetic structure. *Ecography*, 40(8), 913-929.
 
 ---
 
-## 🤝 **Contribuciones**
+## Contribuciones
 
-¿Quieres contribuir? ¡Genial!
+Las contribuciones son bienvenidas mediante pull requests:
 
-1. **Fork** el repositorio
-2. **Crea** una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. **Commit** tus cambios (`git commit -m 'Add AmazingFeature'`)
-4. **Push** a la rama (`git push origin feature/AmazingFeature`)
-5. **Abre** un Pull Request
-
----
-
-## 📧 **Contacto & Soporte**
-
-- **Issues**: [GitHub Issues](https://github.com/michal0091/madrid-air-quality-system/issues)
-- **Documentación**: Todos los archivos `.md` en el repositorio
-- **Logs**: Revisa `logs/` para debugging detallado
+1. Fork del repositorio
+2. Crear rama feature (`git checkout -b feature/nueva-funcionalidad`)
+3. Commit cambios (`git commit -m 'Descripción concisa'`)
+4. Push a rama (`git push origin feature/nueva-funcionalidad`)
+5. Abrir Pull Request
 
 ---
 
-## ⭐ **¿Te gusta el proyecto?**
+## Licencia y Contacto
 
-¡Dale una estrella! ⭐ Ayuda a otros desarrolladores a encontrar este sistema avanzado de calidad del aire.
+**Repositorio**: [github.com/michal0091/madrid-air-quality-system](https://github.com/michal0091/madrid-air-quality-system)
+
+**Issues**: Para reportar bugs o sugerir mejoras, usar [GitHub Issues](https://github.com/michal0091/madrid-air-quality-system/issues)
 
 ---
 
-**🏆 Sistema completo de calidad del aire con R² > 0.9 y predicciones tiempo real automatizadas. ¡Listo para producción!** 🚀
+*Sistema de predicción de calidad del aire desarrollado con R, PostgreSQL y técnicas de machine learning espacial. 2015-2025.* ⭐
