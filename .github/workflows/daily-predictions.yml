@@ -2,8 +2,8 @@ name: Daily Air Quality Predictions
 
 on:
   schedule:
-    # Ejecutar diariamente a las 6:00 AM UTC (7:00 AM Madrid)
-    - cron: '0 6 * * *'
+    # Ejecutar diariamente a las 4:00 AM UTC (6:00 AM Madrid CEST)
+    - cron: '0 4 * * *'
   workflow_dispatch:  # Permitir ejecución manual
 
 env:
