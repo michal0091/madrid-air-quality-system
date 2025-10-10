@@ -34,15 +34,17 @@ ui <- dashboardPage(
       tags$div(style = "padding: 20px; background: rgba(240, 245, 239, 0.1); border-radius: 8px; margin: 15px;",
         h4("Controles", style = "color: #b8d6c6; margin-bottom: 20px; font-weight: 600;"),
         
-        # Pollutant selector
+        # Pollutant selector - ICA 5 contaminants
         div(style = "margin-bottom: 20px;",
           tags$label("Contaminante:", style = "color: #f0f5ef; font-weight: 500; display: block; margin-bottom: 8px;"),
-          selectInput("contaminante_sel", 
+          selectInput("contaminante_sel",
                       label = NULL,
                       choices = list(
-                        "Dióxido de Nitrógeno" = "Dióxido de Nitrógeno",
-                        "Partículas < 10 µm" = "Partículas < 10 µm",
-                        "Ozono" = "Ozono"
+                        "Dióxido de Nitrógeno (NO₂)" = "Dióxido de Nitrógeno",
+                        "Partículas < 10 µm (PM10)" = "Partículas < 10 µm",
+                        "Partículas < 2.5 µm (PM2.5)" = "Partículas < 2.5 µm",
+                        "Ozono (O₃)" = "Ozono",
+                        "Dióxido de Azufre (SO₂)" = "Dióxido de Azufre"
                       ),
                       selected = "Dióxido de Nitrógeno")
         ),
@@ -421,15 +423,17 @@ ui <- dashboardPage(
               <ul>
                 <li><strong>Predicciones 40 horas:</strong> Pronósticos horarios para las próximas 40 horas</li>
                 <li><strong>16 Estaciones:</strong> Red de monitoreo distribuida por Madrid</li>
-                <li><strong>3 Contaminantes:</strong> NO₂, PM10, y O₃</li>
-                <li><strong>Modelos CARET:</strong> Random Forest con R² > 0.96</li>
+                <li><strong>5 Contaminantes ICA:</strong> NO₂, PM10, PM2.5, O₃, SO₂</li>
+                <li><strong>Modelos RANGER:</strong> Random Forest con R² > 0.75 (UTM projection)</li>
               </ul>
-              
-              <h4>Contaminantes Monitoreados:</h4>
+
+              <h4>Contaminantes ICA Monitoreados:</h4>
               <ul>
                 <li><strong>Dióxido de Nitrógeno (NO₂):</strong> Principal contaminante del tráfico</li>
                 <li><strong>Partículas < 10 µm (PM10):</strong> Partículas suspendidas en el aire</li>
+                <li><strong>Partículas < 2.5 µm (PM2.5):</strong> Partículas finas respirables</li>
                 <li><strong>Ozono (O₃):</strong> Contaminante fotoquímico</li>
+                <li><strong>Dióxido de Azufre (SO₂):</strong> Emisiones industriales y combustión</li>
               </ul>
               
               <h4>Tecnología:</h4>
