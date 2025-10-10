@@ -55,12 +55,12 @@ jobs:
         R -e "
         # Instalar paquetes esenciales para predicciones Y generación de mapas
         packages <- c(
-          'DBI', 'RPostgres', 'caret', 'randomForest', 'sf',
+          'DBI', 'RPostgres', 'caret', 'randomForest', 'ranger', 'sf',
           'dplyr', 'logger', 'httr2', 'jsonlite', 'lubridate',
           'data.table', 'shiny', 'leaflet', 'plotly', 'ggplot2',
           'rsconnect', 'shinydashboard', 'DT', 'htmltools',
           'shinycssloaders', 'tidyr', 'viridis', 'yaml',
-          'ggrepel', 'purrr', 'gganimate', 'transformr'
+          'ggrepel', 'purrr', 'gganimate', 'transformr', 'xml2'
         )
 
         # Paquetes adicionales para generación de mapas (CRÍTICOS)
