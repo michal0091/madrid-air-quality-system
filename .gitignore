@@ -56,6 +56,10 @@ logs/
 test_*.R
 advanced_models*.R
 
+# Markdown files (except README.md)
+*.md
+!README.md
+
 # Claude Code files
 CLAUDE_CONTEXT.md
 .claude_history
