@@ -18,25 +18,23 @@ env:
 jobs:
   daily-predictions:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository }}/air-quality-predictor:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Pull Docker image
+      run: |
+        echo "🐳 Descargando imagen Docker desde GHCR..."
+        docker pull ghcr.io/${{ github.repository }}/air-quality-predictor:latest
+
+        echo "✅ Imagen Docker descargada"
+        docker images | grep air-quality-predictor
+
     - name: Verify Docker environment
       run: |
-        echo "🐳 Ejecutando en contenedor Docker pre-configurado"
-        echo "📦 R version: $(R --version | head -1)"
-        echo "💾 Memoria disponible:"
-        free -h
-
-        # Verificar paquetes críticos
-        Rscript -e "
+        echo "🐳 Verificando entorno Docker"
+        docker run --rm ghcr.io/${{ github.repository }}/air-quality-predictor:latest Rscript -e "
         critical <- c('ranger', 'sf', 'caret', 'dplyr', 'logger', 'xml2')
         for(pkg in critical) {
           if(requireNamespace(pkg, quietly = TRUE)) {
@@ -73,13 +71,25 @@ jobs:
       run: |
         # Crear directorios antes de ejecutar scripts
         mkdir -p data/realtime logs
-        Rscript R/meteo_forecast.R || echo "AEMET forecast failed, continuing..."
-        Rscript -e "
-        source('R/datos_realtime_fallback.R', local = TRUE)
-        datos_actuales <- obtener_datos_tiempo_real(usar_fallback = TRUE)
-        saveRDS(datos_actuales, 'data/realtime/datos_prediccion_latest.rds')
-        cat('✅ Datos actuales preparados\n')
-        "
+
+        # Ejecutar scripts R en Docker con volúmenes montados
+        docker run --rm \
+          -v $(pwd):/app \
+          -w /app \
+          -e AEMET_API_KEY="${{ secrets.AEMET_API_KEY }}" \
+          ghcr.io/${{ github.repository }}/air-quality-predictor:latest \
+          Rscript R/meteo_forecast.R || echo "AEMET forecast failed, continuing..."
+
+        docker run --rm \
+          -v $(pwd):/app \
+          -w /app \
+          ghcr.io/${{ github.repository }}/air-quality-predictor:latest \
+          Rscript -e "
+          source('R/datos_realtime_fallback.R', local = TRUE)
+          datos_actuales <- obtener_datos_tiempo_real(usar_fallback = TRUE)
+          saveRDS(datos_actuales, 'data/realtime/datos_prediccion_latest.rds')
+          cat('✅ Datos actuales preparados\n')
+          "
       continue-on-error: true
 
     - name: Generate predictions
@@ -92,8 +102,12 @@ jobs:
         echo "💾 Memoria disponible:"
         free -h
 
-        # Ejecutar predicciones con optimización de memoria
-        Rscript R/05_predicciones_horarias.R
+        # Ejecutar predicciones con optimización de memoria en Docker
+        docker run --rm \
+          -v $(pwd):/app \
+          -w /app \
+          ghcr.io/${{ github.repository }}/air-quality-predictor:latest \
+          Rscript R/05_predicciones_horarias.R
 
         # Mostrar memoria DESPUÉS de predicciones
         echo "💾 Memoria después de predicciones:"
@@ -101,56 +115,69 @@ jobs:
 
     - name: Log predictions for retrospective analysis
       run: |
-        Rscript -e "
-        # Logging básico sin conexión a BD (por ahora)
-        if (file.exists('output/predicciones_40h_latest.rds')) {
-          predicciones <- readRDS('output/predicciones_40h_latest.rds')
-          cat('✅ Predicciones cargadas:', nrow(predicciones), 'registros\n')
+        docker run --rm \
+          -v $(pwd):/app \
+          -w /app \
+          ghcr.io/${{ github.repository }}/air-quality-predictor:latest \
+          Rscript -e "
+          # Logging básico sin conexión a BD (por ahora)
+          if (file.exists('output/predicciones_40h_latest.rds')) {
+            predicciones <- readRDS('output/predicciones_40h_latest.rds')
+            cat('✅ Predicciones cargadas:', nrow(predicciones), 'registros\n')
 
-          # Generar resumen básico
-          resumen <- list(
-            timestamp = Sys.time(),
-            total_predicciones = nrow(predicciones),
-            estaciones = length(unique(predicciones\$id_estacion)),
-            contaminantes = length(unique(predicciones\$contaminante)),
-            rango_valores = range(predicciones\$prediccion, na.rm = TRUE)
-          )
+            # Generar resumen básico
+            resumen <- list(
+              timestamp = Sys.time(),
+              total_predicciones = nrow(predicciones),
+              estaciones = length(unique(predicciones\$id_estacion)),
+              contaminantes = length(unique(predicciones\$contaminante)),
+              rango_valores = range(predicciones\$prediccion, na.rm = TRUE)
+            )
 
-          # Guardar resumen
-          saveRDS(resumen, 'output/resumen_predicciones_latest.rds')
-          cat('📊 Resumen de predicciones generado\n')
-        } else {
-          cat('❌ No se encontraron predicciones para logging\n')
-        }
-        "
+            # Guardar resumen
+            saveRDS(resumen, 'output/resumen_predicciones_latest.rds')
+            cat('📊 Resumen de predicciones generado\n')
+          } else {
+            cat('❌ No se encontraron predicciones para logging\n')
+          }
+          "
       continue-on-error: true
 
     - name: Update cloud database
       run: |
         # Verificar conexión a BD cloud (opcional)
-        Rscript -e "
-        tryCatch({
-          library(DBI)
-          library(RPostgres)
+        docker run --rm \
+          -v $(pwd):/app \
+          -w /app \
+          -e DB_HOST="${{ secrets.DB_HOST }}" \
+          -e DB_PORT="${{ secrets.DB_PORT }}" \
+          -e DB_NAME="${{ secrets.DB_NAME }}" \
+          -e DB_USER="${{ secrets.DB_USER }}" \
+          -e DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+          ghcr.io/${{ github.repository }}/air-quality-predictor:latest \
+          Rscript -e "
+          tryCatch({
+            library(DBI)
+            library(RPostgres)
 
-          # Conectar a BD cloud
-          con <- dbConnect(RPostgres::Postgres(),
-            host = Sys.getenv('DB_HOST'),
-            port = as.integer(Sys.getenv('DB_PORT')),
-            dbname = Sys.getenv('DB_NAME'),
-            user = Sys.getenv('DB_USER'),
-            password = Sys.getenv('DB_PASSWORD')
-          )
+            # Conectar a BD cloud
+            con <- dbConnect(RPostgres::Postgres(),
+              host = Sys.getenv('DB_HOST'),
+              port = as.integer(Sys.getenv('DB_PORT')),
+              dbname = Sys.getenv('DB_NAME'),
+              user = Sys.getenv('DB_USER'),
+              password = Sys.getenv('DB_PASSWORD')
+            )
 
-          cat('✅ Conexión a cloud database exitosa\n')
-          cat('📊 Tablas disponibles:', length(DBI::dbListTables(con)), '\n')
+            cat('✅ Conexión a cloud database exitosa\n')
+            cat('📊 Tablas disponibles:', length(DBI::dbListTables(con)), '\n')
 
-          DBI::dbDisconnect(con)
-        }, error = function(e) {
-          cat('⚠️ No se pudo conectar a cloud database:', e\$message, '\n')
-          cat('💡 Continuando sin actualización de BD...\n')
-        })
-        "
+            DBI::dbDisconnect(con)
+          }, error = function(e) {
+            cat('⚠️ No se pudo conectar a cloud database:', e\$message, '\n')
+            cat('💡 Continuando sin actualización de BD...\n')
+          })
+          "
       continue-on-error: true
 
     - name: Generate dashboard data
@@ -161,18 +188,17 @@ jobs:
         # Madrid mask se genera automáticamente inline en generar_mapas_por_hora.R
         echo "🗺️ Madrid mask se generará inline en generar_mapas_por_hora.R"
 
-        # Generar mapas e imágenes para el dashboard
+        # Generar mapas e imágenes para el dashboard con Docker
         echo "🗺️ Generando mapas por hora..."
-        if ! Rscript generar_mapas_por_hora.R; then
+        if ! docker run --rm -v $(pwd):/app -w /app ghcr.io/${{ github.repository }}/air-quality-predictor:latest Rscript generar_mapas_por_hora.R; then
           echo "❌ Error generando mapas por hora"
           echo "Creando mapas de fallback..."
           mkdir -p app/www/mapas_horas
-          # Copiar imagen de placeholder para evitar errores 404
           echo "Mapas no disponibles" > app/www/mapas_horas/placeholder.txt
         fi
 
         echo "📊 Generando imágenes por hora..."
-        if ! Rscript generar_imagenes_por_hora.R; then
+        if ! docker run --rm -v $(pwd):/app -w /app ghcr.io/${{ github.repository }}/air-quality-predictor:latest Rscript generar_imagenes_por_hora.R; then
           echo "❌ Error generando imágenes por hora"
           echo "Creando imágenes de fallback..."
           mkdir -p app/www/horas
@@ -185,8 +211,8 @@ jobs:
         cp output/predicciones_40h_latest.rds app/data/ || echo "Failed to copy predicciones"
         cp output/meteo_40h_latest.rds app/data/ || echo "Failed to copy meteo"
 
-        # Verificar archivos generados
-        Rscript -e "
+        # Verificar archivos generados con Docker
+        docker run --rm -v $(pwd):/app -w /app ghcr.io/${{ github.repository }}/air-quality-predictor:latest Rscript -e "
         # Verificar predicciones y archivos dashboard
         if (file.exists('output/predicciones_40h_latest.rds')) {
           cat('✅ Predicciones generadas correctamente\n')
@@ -253,8 +279,12 @@ jobs:
 
     - name: Deploy to shinyapps.io
       run: |
-        # Configurar credenciales de shinyapps.io
-        Rscript -e "
+        # Configurar credenciales de shinyapps.io y desplegar con Docker
+        docker run --rm \
+          -v $(pwd):/app \
+          -w /app \
+          ghcr.io/${{ github.repository }}/air-quality-predictor:latest \
+          Rscript -e "
         if (!requireNamespace('rsconnect', quietly = TRUE)) {
           install.packages('rsconnect')
         }
