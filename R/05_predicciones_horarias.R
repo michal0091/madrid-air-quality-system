@@ -220,84 +220,29 @@ generar_predicciones_estaciones <- function(datos_meteo, archivo_modelos = "mode
 
   log_info("Generando predicciones para estaciones de Madrid...")
 
-  # Cargar modelos RANGER ICA (nuevos modelos optimizados)
-  if(!file.exists(archivo_modelos)) {
-    log_warn("Archivo {archivo_modelos} no existe")
-    log_info("Intentando cargar modelos individuales RANGER ICA...")
+  # Registrar memoria inicial
+  memoria_inicial_mb <- as.numeric(gc()[2,2])
+  log_info("💾 Memoria en uso inicial: {round(memoria_inicial_mb, 1)} MB")
 
-    # Intentar cargar modelos individuales (descargados desde GitHub release)
-    archivos_individuales <- list.files("models/", pattern = "^ranger_ica_.*\\.rds$", full.names = TRUE)
-    archivos_individuales <- archivos_individuales[!grepl("todos|metricas", archivos_individuales)]
+  # Obtener lista de archivos de modelos individuales (modo optimizado memoria)
+  archivos_modelos <- list.files("models/", pattern = "^ranger_ica_.*\\.rds$", full.names = TRUE)
+  archivos_modelos <- archivos_modelos[!grepl("todos|metricas", archivos_modelos)]
 
-    if(length(archivos_individuales) >= 5) {
-      log_info("Cargando {length(archivos_individuales)} modelos individuales...")
-      modelos <- list()
-
-      for(archivo in archivos_individuales) {
-        # Extraer nombre del contaminante del nombre del archivo
-        nombre_base <- basename(archivo)
-        # Convertir nombre de archivo a nombre de contaminante
-        nombre_contaminante <- gsub("^ranger_ica_", "", nombre_base)
-        nombre_contaminante <- gsub("\\.rds$", "", nombre_contaminante)
-        nombre_contaminante <- gsub("_", " ", nombre_contaminante)
-
-        # Mapear nombres de archivo a nombres oficiales
-        nombre_contaminante <- case_when(
-          grepl("Di.*xido.*de.*Nitr", nombre_contaminante, ignore.case = TRUE) ~ "Dióxido de Nitrógeno",
-          grepl("Part.*culas.*10", nombre_contaminante, ignore.case = TRUE) ~ "Partículas < 10 µm",
-          grepl("Part.*culas.*2.*5", nombre_contaminante, ignore.case = TRUE) ~ "Partículas < 2.5 µm",
-          grepl("Ozono", nombre_contaminante, ignore.case = TRUE) ~ "Ozono",
-          grepl("Di.*xido.*de.*Azufre", nombre_contaminante, ignore.case = TRUE) ~ "Dióxido de Azufre",
-          TRUE ~ nombre_contaminante
-        )
-
-        modelo <- readRDS(archivo)
-        modelos[[nombre_contaminante]] <- modelo
-        log_info("  ✓ {nombre_contaminante}")
-      }
-
-      log_success("✓ {length(modelos)} modelos RANGER ICA cargados desde archivos individuales")
-
-    } else {
-      log_error("Solo se encontraron {length(archivos_individuales)} modelos (se esperaban 5)")
-      log_warn("Intentando con modelos legacy...")
-
-      # Fallback a modelos viejos si existen
-      archivo_modelos <- "models/modelos_caret_avanzados.rds"
-      if(!file.exists(archivo_modelos)) {
-        log_error("No se encontraron modelos disponibles")
-        return(NULL)
-      }
-
-      modelos <- readRDS(archivo_modelos)
-    }
-  } else {
-    # Cargar archivo consolidado si existe (uso local)
-    modelos <- readRDS(archivo_modelos)
-  }
-
-  # Determinar formato de modelos (ranger ICA vs legacy CARET)
-  if("Dióxido de Nitrógeno" %in% names(modelos)) {
-    # Formato RANGER ICA (nuevos modelos)
-    log_info("✓ Modelos RANGER ICA cargados: {length(modelos)} contaminantes")
-    usar_ranger <- TRUE
-  } else if("modelos" %in% names(modelos)) {
-    # Formato legacy CARET
-    modelos <- modelos$modelos
-    log_info("✓ Modelos legacy CARET cargados: {length(modelos)} contaminantes")
-    usar_ranger <- FALSE
-  } else {
-    log_error("Formato de modelos no reconocido")
+  if(length(archivos_modelos) < 5) {
+    log_error("Solo se encontraron {length(archivos_modelos)} modelos (se esperaban 5)")
     return(NULL)
   }
+
+  log_info("📦 Modo optimizado memoria: cargar modelos UNO POR UNO")
+  log_info("Modelos encontrados: {length(archivos_modelos)}")
   
   # Coordenadas de estaciones principales de Madrid
   estaciones <- data.frame(
     id_estacion = c(4, 8, 11, 16, 17, 18, 27, 35, 36, 38, 39, 40, 47, 48, 49, 50),
     nombre_estacion = c(
-      "Pza. de España", "Escuelas Aguirre", "Av. Ramón y Cajal", "Arturo Soria", 
-      "Villaverde Alto", "Farolillo", "Barajas Pueblo", "Pza. del Carmen", 
-      "Moratalaz", "Cuatro Caminos", "Barrio del Pilar", "Vallecas", 
+      "Pza. de España", "Escuelas Aguirre", "Av. Ramón y Cajal", "Arturo Soria",
+      "Villaverde Alto", "Farolillo", "Barajas Pueblo", "Pza. del Carmen",
+      "Moratalaz", "Cuatro Caminos", "Barrio del Pilar", "Vallecas",
       "Mendez Alvaro", "Castellana", "Retiro", "Pza. Castilla"
     ),
     lat = c(40.4238, 40.4213, 40.4514, 40.4405, 40.3479, 40.3748, 40.4756, 40.4192,
@@ -305,77 +250,85 @@ generar_predicciones_estaciones <- function(datos_meteo, archivo_modelos = "mode
     lon = c(-3.7122, -3.6958, -3.6774, -3.6394, -3.7215, -3.7336, -3.5935, -3.7026,
             -3.6453, -3.7097, -3.7137, -3.6458, -3.6862, -3.6889, -3.6823, -3.6951)
   )
-  
-  # Crear combinación de todas las horas x estaciones x contaminantes
-  combinaciones <- expand.grid(
-    fecha_hora = datos_meteo$fecha_hora,
-    id_estacion = estaciones$id_estacion,
-    contaminante = names(modelos),
-    stringsAsFactors = FALSE
-  ) %>%
-    # Unir con datos meteorológicos
-    left_join(datos_meteo, by = "fecha_hora") %>%
-    # Unir con información de estaciones
-    left_join(estaciones, by = "id_estacion") %>%
-    # Crear variables derivadas que espera el modelo avanzado
-    crear_variables_derivadas_prediccion()
-  
-  log_info("Combinaciones creadas: {nrow(combinaciones)} registros")
-  log_info("  {nrow(datos_meteo)} horas × {nrow(estaciones)} estaciones × {length(modelos)} contaminantes")
-  
-  # Generar predicciones para cada contaminante
+
+  # Generar predicciones UNO POR UNO (modo optimizado memoria)
   predicciones_finales <- list()
 
-  for(contaminante_nombre in names(modelos)) {
-    log_info("Prediciendo {contaminante_nombre}...")
+  for(i in seq_along(archivos_modelos)) {
+    archivo <- archivos_modelos[i]
 
-    # Filtrar datos para este contaminante
-    datos_contaminante <- combinaciones %>%
-      filter(contaminante == contaminante_nombre)
+    # Extraer nombre del contaminante
+    nombre_base <- basename(archivo)
+    nombre_contaminante <- gsub("^ranger_ica_", "", nombre_base)
+    nombre_contaminante <- gsub("\\.rds$", "", nombre_contaminante)
+    nombre_contaminante <- gsub("_", " ", nombre_contaminante)
+
+    # Mapear a nombre oficial
+    nombre_contaminante <- case_when(
+      grepl("Di.*xido.*de.*Nitr", nombre_contaminante, ignore.case = TRUE) ~ "Dióxido de Nitrógeno",
+      grepl("Part.*culas.*10", nombre_contaminante, ignore.case = TRUE) ~ "Partículas < 10 µm",
+      grepl("Part.*culas.*2.*5", nombre_contaminante, ignore.case = TRUE) ~ "Partículas < 2.5 µm",
+      grepl("Ozono", nombre_contaminante, ignore.case = TRUE) ~ "Ozono",
+      grepl("Di.*xido.*de.*Azufre", nombre_contaminante, ignore.case = TRUE) ~ "Dióxido de Azufre",
+      TRUE ~ nombre_contaminante
+    )
+
+    log_info("📦 [{i}/{length(archivos_modelos)}] Cargando modelo: {nombre_contaminante}...")
 
     tryCatch({
-      # Obtener modelo según formato
-      if(usar_ranger) {
-        # Modelos RANGER ICA (directamente el objeto train)
-        modelo_caret <- modelos[[contaminante_nombre]]
+      # CARGAR SOLO ESTE MODELO
+      modelo_caret <- readRDS(archivo)
 
-        # Métricas desde resultados del modelo
-        metricas_modelo <- modelo_caret$results %>%
-          filter(mtry == modelo_caret$bestTune$mtry,
-                 splitrule == modelo_caret$bestTune$splitrule,
-                 min.node.size == modelo_caret$bestTune$min.node.size)
+      memoria_modelo_mb <- as.numeric(gc()[2,2])
+      log_info("💾 Memoria después de cargar modelo: {round(memoria_modelo_mb, 1)} MB")
 
-        rmse_modelo <- metricas_modelo$RMSE[1]
-        r2_modelo <- metricas_modelo$Rsquared[1]
+      # Crear combinaciones solo para este contaminante
+      combinaciones <- expand.grid(
+        fecha_hora = datos_meteo$fecha_hora,
+        id_estacion = estaciones$id_estacion,
+        stringsAsFactors = FALSE
+      ) %>%
+        mutate(contaminante = nombre_contaminante) %>%
+        left_join(datos_meteo, by = "fecha_hora") %>%
+        left_join(estaciones, by = "id_estacion") %>%
+        crear_variables_derivadas_prediccion()
 
-      } else {
-        # Modelos legacy CARET (con estructura $modelo + $metricas)
-        modelo_info <- modelos[[contaminante_nombre]]
-        modelo_caret <- modelo_info$modelo
-        rmse_modelo <- modelo_info$metricas$RMSE
-        r2_modelo <- modelo_info$metricas$Rsquared
-      }
+      log_info("  Combinaciones: {nrow(combinaciones)} registros")
 
-      # Hacer predicciones
-      predicciones <- predict(modelo_caret, newdata = datos_contaminante)
+      # Extraer métricas del modelo
+      metricas_modelo <- modelo_caret$results %>%
+        filter(mtry == modelo_caret$bestTune$mtry,
+               splitrule == modelo_caret$bestTune$splitrule,
+               min.node.size == modelo_caret$bestTune$min.node.size)
 
-      # Agregar predicciones a los datos
-      datos_con_predicciones <- datos_contaminante %>%
+      rmse_modelo <- metricas_modelo$RMSE[1]
+      r2_modelo <- metricas_modelo$Rsquared[1]
+
+      # PREDICCIONES
+      predicciones <- predict(modelo_caret, newdata = combinaciones)
+
+      # Agregar predicciones
+      datos_con_predicciones <- combinaciones %>%
         mutate(
           prediccion = predicciones,
           rmse_modelo = rmse_modelo,
           r2_modelo = r2_modelo
         )
 
-      predicciones_finales[[contaminante_nombre]] <- datos_con_predicciones
+      predicciones_finales[[nombre_contaminante]] <- datos_con_predicciones
 
-      log_success("✓ {contaminante_nombre}: {nrow(datos_con_predicciones)} predicciones")
+      log_success("✓ {nombre_contaminante}: {nrow(datos_con_predicciones)} predicciones")
       log_info("  Rango: {round(min(predicciones), 1)} - {round(max(predicciones), 1)} µg/m³")
       log_info("  Modelo: RMSE={round(rmse_modelo, 2)}, R²={round(r2_modelo, 3)}")
 
+      # LIBERAR MEMORIA: eliminar modelo después de usarlo
+      rm(modelo_caret, combinaciones, predicciones, datos_con_predicciones)
+      gc_resultado <- gc()
+      memoria_despues_mb <- as.numeric(gc_resultado[2,2])
+      log_info("💾 Memoria después de liberar modelo: {round(memoria_despues_mb, 1)} MB")
+
     }, error = function(e) {
-      log_error("Error prediciendo {contaminante_nombre}: {e$message}")
-      log_error("Traceback: {paste(capture.output(traceback()), collapse='\n')}")
+      log_error("❌ Error con {nombre_contaminante}: {e$message}")
     })
   }
   
