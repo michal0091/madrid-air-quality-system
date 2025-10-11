@@ -110,15 +110,28 @@ obtener_datos_aemet_api <- function(horas_prediccion) {
   
   # Leer como texto y parsear JSON (formato forecast)
   texto_datos <- resp_body_string(resp_datos)
-  datos_json <- fromJSON(texto_datos)
+
+  # DEBUG: Guardar JSON crudo para inspección
+  log_info("JSON crudo (primeros 500 caracteres): {substr(texto_datos, 1, 500)}")
+
+  datos_json <- fromJSON(texto_datos, simplifyVector = FALSE)
 
   # DEBUG: Inspeccionar respuesta JSON
   log_info("Tipo de respuesta JSON: {class(datos_json)}")
   log_info("Longitud de respuesta: {length(datos_json)}")
-  if(is.list(datos_json) && length(datos_json) > 0) {
+
+  if(is.list(datos_json)) {
     log_info("Nombres en respuesta JSON: {paste(names(datos_json), collapse=', ')}")
-    if(length(datos_json) >= 1 && is.list(datos_json[[1]])) {
-      log_info("Nombres en primer elemento: {paste(names(datos_json[[1]]), collapse=', ')}")
+
+    # Si es un array, inspeccionar primer elemento
+    if(length(datos_json) > 0 && is.null(names(datos_json))) {
+      log_info("Respuesta es un array, inspeccionando primer elemento...")
+      if(is.list(datos_json[[1]])) {
+        log_info("Nombres en primer elemento: {paste(names(datos_json[[1]]), collapse=', ')}")
+      }
+      # Usar el primer elemento si es un array
+      datos_json <- datos_json[[1]]
+      log_info("Usando primer elemento del array")
     }
   }
 
