@@ -18,102 +18,35 @@ env:
 jobs:
   daily-predictions:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository }}/air-quality-predictor:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Setup R
-      uses: r-lib/actions/setup-r@v2
-      with:
-        r-version: '4.5.1'
-
-    - name: Install system dependencies
+    - name: Verify Docker environment
       run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          libcurl4-openssl-dev \
-          libssl-dev \
-          libxml2-dev \
-          libpq-dev \
-          libgdal-dev \
-          libproj-dev \
-          libgeos-dev \
-          libudunits2-dev \
-          libarchive-dev \
-          cmake \
-          pandoc \
-          gdal-bin
+        echo "🐳 Ejecutando en contenedor Docker pre-configurado"
+        echo "📦 R version: $(R --version | head -1)"
+        echo "💾 Memoria disponible:"
+        free -h
 
-    - name: Cache R packages
-      uses: actions/cache@v4
-      with:
-        path: ${{ env.R_LIBS_USER }}
-        key: ${{ runner.os }}-r-${{ hashFiles('DESCRIPTION', 'renv.lock') }}
-
-    - name: Install R dependencies
-      run: |
-        R -e "
-        # Instalar paquetes esenciales para predicciones Y generación de mapas
-        packages <- c(
-          'DBI', 'RPostgres', 'caret', 'randomForest', 'ranger', 'sf',
-          'dplyr', 'logger', 'httr2', 'jsonlite', 'lubridate',
-          'data.table', 'shiny', 'leaflet', 'plotly', 'ggplot2',
-          'rsconnect', 'shinydashboard', 'DT', 'htmltools',
-          'shinycssloaders', 'tidyr', 'viridis', 'yaml',
-          'ggrepel', 'purrr', 'gganimate', 'transformr', 'xml2'
-        )
-
-        # Paquetes adicionales para generación de mapas (CRÍTICOS)
-        map_packages <- c('tidyterra', 'mapSpain', 'slippymath')
-
-        # Instalar mapSpain (CRÍTICO para madrid_mask)
-        tryCatch({
-          if (!requireNamespace('mapSpain', quietly = TRUE)) {
-            install.packages('mapSpain')
-            cat('✅ mapSpain instalado - CRÍTICO para madrid_mask\n')
+        # Verificar paquetes críticos
+        Rscript -e "
+        critical <- c('ranger', 'sf', 'caret', 'dplyr', 'logger', 'xml2')
+        for(pkg in critical) {
+          if(requireNamespace(pkg, quietly = TRUE)) {
+            cat('✅', pkg, '\n')
           } else {
-            cat('⚡ mapSpain ya disponible\n')
-          }
-        }, error = function(e) {
-          cat('❌ ERROR CRÍTICO: No se pudo instalar mapSpain:', e$message, '\n')
-          cat('💡 madrid_mask no se podrá generar correctamente\n')
-        })
-
-        # Intentar instalar tidyterra desde CRAN (versión estable)
-        tryCatch({
-          if (!requireNamespace('tidyterra', quietly = TRUE)) {
-            install.packages('tidyterra')
-            cat('✅ tidyterra instalado desde CRAN\n')
-          } else {
-            cat('⚡ tidyterra ya disponible\n')
-          }
-        }, error = function(e) {
-          cat('⚠️ No se pudo instalar tidyterra:', e$message, '\n')
-        })
-
-        # Intentar instalar slippymath
-        tryCatch({
-          if (!requireNamespace('slippymath', quietly = TRUE)) {
-            install.packages('slippymath')
-            cat('✅ slippymath instalado\n')
-          } else {
-            cat('⚡ slippymath ya disponible\n')
-          }
-        }, error = function(e) {
-          cat('⚠️ No se pudo instalar slippymath:', e$message, '\n')
-        })
-
-        for(pkg in packages) {
-          if (!requireNamespace(pkg, quietly = TRUE)) {
-            install.packages(pkg)
-            cat('✅ Instalado:', pkg, '\n')
-          } else {
-            cat('⚡ Ya disponible:', pkg, '\n')
+            cat('❌ FALTANTE:', pkg, '\n')
+            stop('Paquete crítico faltante en Docker image')
           }
         }
-
-        cat('✅ Dependencias esenciales instaladas\n')
+        cat('✅ Todos los paquetes críticos disponibles\n')
         "
 
     - name: Download latest trained models
