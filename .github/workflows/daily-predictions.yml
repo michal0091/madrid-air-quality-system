@@ -373,8 +373,10 @@ jobs:
 
     - name: Clean up deployment files
       run: |
-        rm -rf deploy_temp
+        # Usar sudo para limpiar archivos creados por Docker con permisos root
+        sudo rm -rf deploy_temp || echo "⚠️ No se pudo limpiar deploy_temp (permisos Docker)"
         echo "🧹 Archivos temporales limpiados"
+      continue-on-error: true
 
     - name: Send email notification on failure
       if: failure()
