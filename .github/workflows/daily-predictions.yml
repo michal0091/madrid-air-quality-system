@@ -150,10 +150,21 @@ jobs:
       continue-on-error: true
 
     - name: Generate predictions
+      timeout-minutes: 30  # Timeout de 30 minutos (antes sin límite)
       run: |
         # Crear directorios necesarios
         mkdir -p output data/realtime logs
+
+        # Mostrar memoria disponible ANTES de predicciones
+        echo "💾 Memoria disponible:"
+        free -h
+
+        # Ejecutar predicciones con optimización de memoria
         Rscript R/05_predicciones_horarias.R
+
+        # Mostrar memoria DESPUÉS de predicciones
+        echo "💾 Memoria después de predicciones:"
+        free -h
 
     - name: Log predictions for retrospective analysis
       run: |
