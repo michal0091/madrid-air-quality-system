@@ -60,10 +60,19 @@ obtener_prediccion_aemet <- function(horas_prediccion = 48, usar_fallback = TRUE
       stop(paste("API AEMET falló:", e$message))
     }
   })
-  
-  # Validar y procesar datos usando función específica para forecast
-  prediccion_procesada <- procesar_prediccion_aemet_forecast(prediccion)
-  
+
+  # Detectar si son datos de fallback (ya procesados) o datos crudos de API
+  es_fallback <- is.data.frame(prediccion) && "timestamp" %in% names(prediccion)
+
+  if(es_fallback) {
+    # Los datos de fallback ya están en formato correcto
+    log_info("Datos de fallback detectados, sin procesamiento adicional")
+    prediccion_procesada <- prediccion
+  } else {
+    # Datos de API AEMET - requieren procesamiento
+    prediccion_procesada <- procesar_prediccion_aemet_forecast(prediccion)
+  }
+
   log_success("✅ Predicción meteorológica obtenida: {nrow(prediccion_procesada)} registros")
   return(prediccion_procesada)
 }
@@ -114,24 +123,32 @@ obtener_datos_aemet_api <- function(horas_prediccion) {
   # DEBUG: Guardar JSON crudo para inspección
   log_info("JSON crudo (primeros 500 caracteres): {substr(texto_datos, 1, 500)}")
 
-  datos_json <- fromJSON(texto_datos, simplifyVector = FALSE)
+  datos_json <- fromJSON(texto_datos)  # simplifyVector = TRUE por defecto (convierte a data.frame)
 
   # DEBUG: Inspeccionar respuesta JSON
   log_info("Tipo de respuesta JSON: {class(datos_json)}")
   log_info("Longitud de respuesta: {length(datos_json)}")
 
-  if(is.list(datos_json)) {
+  if(is.data.frame(datos_json)) {
+    log_info("Nombres en data.frame: {paste(names(datos_json), collapse=', ')}")
+  } else if(is.list(datos_json)) {
     log_info("Nombres en respuesta JSON: {paste(names(datos_json), collapse=', ')}")
 
-    # Si es un array, inspeccionar primer elemento
+    # Si es un array (lista sin nombres), tomar primer elemento
     if(length(datos_json) > 0 && is.null(names(datos_json))) {
-      log_info("Respuesta es un array, inspeccionando primer elemento...")
+      log_info("Respuesta es un array, extrayendo primer elemento...")
       if(is.list(datos_json[[1]])) {
         log_info("Nombres en primer elemento: {paste(names(datos_json[[1]]), collapse=', ')}")
       }
       # Usar el primer elemento si es un array
       datos_json <- datos_json[[1]]
       log_info("Usando primer elemento del array")
+
+      # Convertir a data.frame si es necesario
+      if(is.list(datos_json) && !is.data.frame(datos_json)) {
+        datos_json <- as.data.frame(datos_json, stringsAsFactors = FALSE)
+        log_info("Convertido a data.frame")
+      }
     }
   }
 
