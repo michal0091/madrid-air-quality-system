@@ -68,12 +68,17 @@ obtener_prediccion_aemet <- function(horas_prediccion = 48, usar_fallback = TRUE
     # Los datos de fallback ya están en formato correcto
     log_info("Datos de fallback detectados, sin procesamiento adicional")
     prediccion_procesada <- prediccion
+    # Marcar fuente como fallback
+    attr(prediccion_procesada, "fuente_datos") <- "fallback_simulado"
   } else {
     # Datos de API AEMET - requieren procesamiento
     prediccion_procesada <- procesar_prediccion_aemet_forecast(prediccion)
+    # Marcar fuente como AEMET real
+    attr(prediccion_procesada, "fuente_datos") <- "aemet_api_real"
   }
 
   log_success("✅ Predicción meteorológica obtenida: {nrow(prediccion_procesada)} registros")
+  log_info("Fuente de datos: {attr(prediccion_procesada, 'fuente_datos')}")
   return(prediccion_procesada)
 }
 
@@ -302,6 +307,12 @@ exportar_prediccion_modelado <- function(prediccion, ruta_salida = "data/realtim
   if(!dir.exists(ruta_salida)) dir.create(ruta_salida, recursive = TRUE)
   
   # Formato compatible con pipeline ML
+  # Obtener fuente de datos real del atributo
+  fuente_datos <- attr(prediccion, "fuente_datos", exact = TRUE)
+  if(is.null(fuente_datos)) {
+    fuente_datos <- "aemet_forecast"  # Valor por defecto si no hay atributo
+  }
+
   prediccion_ml <- prediccion |>
     select(
       timestamp,
@@ -313,7 +324,7 @@ exportar_prediccion_modelado <- function(prediccion, ruta_salida = "data/realtim
       presion_hpa
     ) |>
     mutate(
-      fuente = "aemet_forecast",
+      fuente = fuente_datos,  # Usar fuente real: "aemet_api_real" o "fallback_simulado"
       version_pipeline = "forecast_v1.0"
     )
   
