@@ -1,0 +1,66 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+renv/
+
+# Datos y outputs (no necesarios en imagen base)
+data/
+output/
+models/
+logs/
+*.rds
+*.csv
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentación
+*.md
+!README.md
+docs/
+
+# Tests
+tests/
+test_*.R
+
+# GitHub Actions (no necesario en imagen)
+.github/
+
+# Archivos temporales
+*.log
+*.tmp
+temp/
+tmp/
+
+# App Shiny (no necesaria en imagen base)
+app/
+
+# Archivos específicos
+.Renviron
+.env
+credentials.json
