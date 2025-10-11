@@ -86,7 +86,7 @@ jobs:
           ghcr.io/${{ github.repository }}/air-quality-predictor:latest \
           Rscript -e "
           source('R/datos_realtime_fallback.R', local = TRUE)
-          datos_actuales <- obtener_datos_tiempo_real(usar_fallback = TRUE)
+          datos_actuales <- obtener_datos_tiempo_real(usar_fallback = FALSE)  # Usar datos REALES
           saveRDS(datos_actuales, 'data/realtime/datos_prediccion_latest.rds')
           cat('✅ Datos actuales preparados\n')
           "
