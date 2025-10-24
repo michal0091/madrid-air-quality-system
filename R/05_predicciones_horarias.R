@@ -125,15 +125,25 @@ obtener_meteo_aemet <- function(horas_futuras = 40) {
   return(generar_meteo_futuro(horas_futuras))
 }
 
-# 3b. FUNCIÓN PARA CREAR VARIABLES DERIVADAS PARA PREDICCIÓN (RANGER ICA + UTM) ----
-crear_variables_derivadas_prediccion <- function(datos) {
-  log_info("Creando variables derivadas para predicción (formato RANGER ICA + UTM)...")
+# 3b. FUNCIÓN PARA CREAR VARIABLES DERIVADAS PARA PREDICCIÓN (RANGER ICA + UTM + FASE 3) ----
+crear_variables_derivadas_prediccion <- function(datos, datos_auxiliares = NULL) {
+  log_info("Creando variables derivadas para predicción (formato RANGER ICA + UTM + FASE 3)...")
 
   # Centro de Madrid en UTM Zone 30N (Puerta del Sol)
   MADRID_CENTRO_UTM_X <- 440000  # metros
   MADRID_CENTRO_UTM_Y <- 4474000  # metros
 
   datos_enriquecidos <- datos %>%
+    mutate(
+      # Mapear contaminante a id_magnitud (necesario para JOIN con baseline)
+      id_magnitud = case_when(
+        contaminante == "Dióxido de Nitrógeno" ~ 8L,
+        contaminante == "Partículas < 10 µm" ~ 9L,
+        contaminante == "Partículas < 2.5 µm" ~ 10L,
+        contaminante == "Ozono" ~ 14L,
+        contaminante == "Dióxido de Azufre" ~ 1L,
+        TRUE ~ NA_integer_
+      )) %>%
     mutate(
       # VARIABLES ESPACIALES UTM: Convertir lat/lon a UTM Zone 30N (EPSG:25830)
       utm_x = if("lon" %in% names(.) && "lat" %in% names(.)) {
@@ -161,23 +171,30 @@ crear_variables_derivadas_prediccion <- function(datos) {
       utm_x_norm = (utm_x - MADRID_CENTRO_UTM_X) / 10000,  # decenas de km
       utm_y_norm = (utm_y - MADRID_CENTRO_UTM_Y) / 10000,
 
-      # Variables temporales (igual que entrenamiento ranger)
+      # Variables temporales (igual que entrenamiento ranger - sin cíclicas)
       año = year(fecha_hora),
       mes = month(fecha_hora),
       dia = day(fecha_hora),
       dia_año = yday(fecha_hora),
       dia_semana = wday(fecha_hora) - 1,  # 0-6 (Domingo=0)
       fin_semana = ifelse(dia_semana %in% c(0, 6), 1, 0),  # 0=Domingo, 6=Sábado
-      
-      # Variables temporales cíclicas (CRÍTICO: igual que entrenamiento)
-      sin_hora = sin(2 * pi * hora / 24),
-      cos_hora = cos(2 * pi * hora / 24),
-      sin_dia_año = sin(2 * pi * dia_año / 365),
-      cos_dia_año = cos(2 * pi * dia_año / 365),
 
-      # Variables meteorológicas derivadas (CRÍTICO: igual que entrenamiento)
+      # Variables meteorológicas derivadas (CORREGIDO 2025-10-11 - CRÍTICO: igual que entrenamiento)
+      # Temperatura: múltiples transformaciones para capturar no-linealidades
+      temp_abs = abs(temp_media_c),
+      temp_sign = sign(temp_media_c),
       temp_sq = temp_media_c^2,
-      temp_hum_ratio = temp_media_c / (humedad_media_pct + 1),
+      temp_sq_signed = temp_media_c * abs(temp_media_c),
+      temp_cubic = temp_media_c^3,
+
+      # Ratios temperatura-humedad (CORREGIDO: offset para evitar divisiones problemáticas)
+      temp_hum_ratio = (temp_media_c + 20) / (humedad_media_pct + 1),
+      temp_hum_ratio_inv = humedad_media_pct / (abs(temp_media_c) + 1),
+
+      # Déficit de Presión de Vapor (VPD) - físicamente robusto
+      e_sat = 6.112 * exp((17.67 * temp_media_c) / (temp_media_c + 243.5)),
+      e_actual = e_sat * (humedad_media_pct / 100),
+      vpd = e_sat - e_actual,
 
       # Componentes del viento (CRÍTICO: usar dirección si existe)
       dir_viento = ifelse("dir_viento_grados" %in% names(.), dir_viento_grados, 180),
@@ -206,17 +223,121 @@ crear_variables_derivadas_prediccion <- function(datos) {
       presion_diff = ifelse(exists("presion_maxima_hpa") & exists("presion_minima_hpa"),
                            presion_maxima_hpa - presion_minima_hpa, 6),
       humedad_diff = ifelse(exists("humedad_maxima_pct") & exists("humedad_minima_pct"),
-                           humedad_maxima_pct - humedad_minima_pct, 30)
+                           humedad_maxima_pct - humedad_minima_pct, 30),
+
+      # ==================== BASELINE Y TIPO DÍA (SIN LAGS) ====================
+      # CORRECCIÓN: Modelo reentrenado SIN lags cortos
+      # Solo agregamos tipo_dia_num, el baseline se agrega después
+
+      # TIPO DE DÍA (mejorado para capturar patrones semanales)
+      tipo_dia_num = case_when(
+        dia_semana %in% c(0, 6) ~ 0,      # Fin de semana
+        dia_semana == 1 ~ 1,              # Lunes
+        dia_semana == 5 ~ 2,              # Viernes
+        TRUE ~ 3                          # Martes-Jueves
+      )
     )
-  
+
+  # ==================== JOIN CON BASELINE ESTACIONAL (SOLO PROMEDIO) ====================
+
+  if(!is.null(datos_auxiliares) && !is.null(datos_auxiliares$baseline)) {
+
+    log_info("Uniendo con baseline estacional (solo promedio_5y)...")
+
+    datos_con_baseline <- datos_enriquecidos %>%
+      left_join(
+        datos_auxiliares$baseline %>% select(id_magnitud, mes, dia_mes, hora, promedio_5y),
+        by = c("id_magnitud", "mes", "dia" = "dia_mes", "hora"),
+        relationship = "many-to-one"
+      )
+
+    log_info("✅ Baseline estacional agregado (promedio_5y)")
+
+    datos_enriquecidos <- datos_con_baseline
+
+  } else {
+    # Si no hay baseline, agregar con NA
+    datos_enriquecidos <- datos_enriquecidos %>%
+      mutate(promedio_5y = NA_real_)
+
+    log_warn("⚠️ Baseline no disponible, usando NA")
+  }
+
   n_variables <- ncol(datos_enriquecidos) - 1  # -1 por contaminante
-  log_info("Variables derivadas creadas: {n_variables} predictores totales")
-  
+  log_info("Variables derivadas creadas: {n_variables} predictores totales (incluye FASE 3)")
+
   return(datos_enriquecidos)
 }
 
+# 3c. FUNCIÓN PARA CARGAR BASELINE ESTACIONAL Y DATOS HISTÓRICOS ----
+cargar_datos_auxiliares <- function() {
+
+  log_info("Cargando datos auxiliares (baseline + históricos)...")
+
+  # Cargar credenciales BD
+  readRenviron('.Renviron')
+
+  library(DBI)
+  library(RPostgres)
+
+  con <- dbConnect(
+    RPostgres::Postgres(),
+    host = Sys.getenv("DB_HOST"),
+    port = Sys.getenv("DB_PORT"),
+    dbname = Sys.getenv("DB_NAME"),
+    user = Sys.getenv("DB_USER"),
+    password = Sys.getenv("DB_PASSWORD")
+  )
+
+  # Cargar baseline estacional
+  baseline_estacional <- dbGetQuery(con, "
+    SELECT
+      id_magnitud,
+      mes,
+      dia_mes,
+      hora,
+      promedio_5y,
+      p10,
+      p90
+    FROM dim_baseline_estacional
+  ")
+
+  log_success("✅ Baseline estacional cargado: {format(nrow(baseline_estacional), big.mark=',')} registros")
+
+  # Cargar datos históricos recientes (últimas 2 semanas para calcular lags)
+  datos_historicos <- dbGetQuery(con, "
+    SELECT
+      fm.fecha_hora,
+      fm.id_magnitud,
+      fm.id_estacion,
+      fm.valor_medido as valor_medio,
+      dm.descripcion as contaminante
+    FROM fact_mediciones fm
+    JOIN dim_magnitudes dm ON fm.id_magnitud = dm.id_magnitud
+    WHERE fm.fecha_hora >= NOW() - INTERVAL '2 weeks'
+      AND fm.valor_medido IS NOT NULL
+      AND dm.descripcion IN (
+        'Dióxido de Nitrógeno',
+        'Partículas < 10 µm',
+        'Partículas < 2.5 µm',
+        'Ozono',
+        'Dióxido de Azufre'
+      )
+    ORDER BY fm.fecha_hora DESC
+  ")
+
+  log_success("✅ Datos históricos cargados: {format(nrow(datos_historicos), big.mark=',')} registros")
+
+  dbDisconnect(con)
+
+  return(list(
+    baseline = baseline_estacional,
+    historicos = datos_historicos
+  ))
+}
+
 # 4. FUNCIÓN PARA GENERAR PREDICCIONES POR ESTACIÓN ----
-generar_predicciones_estaciones <- function(datos_meteo, archivo_modelos = "models/ranger_ica_todos.rds") {
+generar_predicciones_estaciones <- function(datos_meteo, datos_auxiliares, archivo_modelos = "models/ranger_ica_todos.rds") {
 
   log_info("Generando predicciones para estaciones de Madrid...")
 
@@ -291,7 +412,7 @@ generar_predicciones_estaciones <- function(datos_meteo, archivo_modelos = "mode
         mutate(contaminante = nombre_contaminante) %>%
         left_join(datos_meteo, by = "fecha_hora") %>%
         left_join(estaciones, by = "id_estacion") %>%
-        crear_variables_derivadas_prediccion()
+        crear_variables_derivadas_prediccion(datos_auxiliares)
 
       log_info("  Combinaciones: {nrow(combinaciones)} registros")
 
@@ -304,7 +425,7 @@ generar_predicciones_estaciones <- function(datos_meteo, archivo_modelos = "mode
       rmse_modelo <- metricas_modelo$RMSE[1]
       r2_modelo <- metricas_modelo$Rsquared[1]
 
-      # PREDICCIONES
+      # PREDICCIONES (usar wrapper de caret)
       predicciones <- predict(modelo_caret, newdata = combinaciones)
 
       # Agregar predicciones
@@ -352,19 +473,23 @@ generar_predicciones_estaciones <- function(datos_meteo, archivo_modelos = "mode
 
 # 5. FUNCIÓN PRINCIPAL ----
 generar_predicciones_40h <- function(horas = 40) {
-  
+
   log_info("=== GENERANDO PREDICCIONES PRÓXIMAS {horas} HORAS ===")
-  
+
   # Paso 1: Obtener datos meteorológicos de AEMET (con fallback)
   datos_meteo <- obtener_meteo_aemet(horas)
-  
+
   if(is.null(datos_meteo)) {
     log_error("No se pudieron generar datos meteorológicos")
     return(NULL)
   }
-  
+
+  # Paso 1b: Cargar baseline estacional y datos históricos (FASE 3)
+  log_info("FASE 3: Cargando baseline estacional y datos históricos...")
+  datos_auxiliares <- cargar_datos_auxiliares()
+
   # Paso 2: Generar predicciones para estaciones
-  predicciones <- generar_predicciones_estaciones(datos_meteo)
+  predicciones <- generar_predicciones_estaciones(datos_meteo, datos_auxiliares)
   
   if(is.null(predicciones)) {
     log_error("No se pudieron generar predicciones")

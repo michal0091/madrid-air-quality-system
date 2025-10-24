@@ -17,7 +17,7 @@ log_appender(appender_tee("logs/modelo_ranger_ica.log"))
 log_info("=== MODELO RANGER ICA - 5 CONTAMINANTES ===")
 
 # Parámetros de muestreo
-PORCENTAJE_MUESTRA <- 0.25  # 25% del dataset completo (~2.5M obs de 10M total)
+PORCENTAJE_MUESTRA <- 1.0  # 100% del dataset (entrenamiento completo)
 SEED <- 42
 set.seed(SEED)
 
@@ -48,6 +48,8 @@ query_ica <- glue("
   SELECT
     fm.fecha_hora,
     fm.valor_medido as valor_medio,
+    fm.id_magnitud,
+    fm.id_estacion,
     de.\"LONGITUD\"::FLOAT as longitud,
     de.\"LATITUD\"::FLOAT as latitud,
     -- Proyección UTM Zone 30N (EPSG:25830) - coordenadas cartesianas en metros
@@ -95,9 +97,27 @@ query_ica <- glue("
   ORDER BY fm.fecha_hora
 ")
 
-log_info("Cargando datos históricos 2015-2025 (5 contaminantes ICA)...")
+log_info("📊 ENTRENAMIENTO COMPLETO: Cargando datos 2015-2025 (10 años, 5 contaminantes ICA, 100% muestra)...")
 inicio_carga <- Sys.time()
 datos_raw <- dbGetQuery(con, query_ica)
+
+# ==================== CARGAR BASELINE ESTACIONAL ====================
+log_info("\nCargando baseline estacional desde BD...")
+
+baseline_estacional <- dbGetQuery(con, "
+  SELECT
+    id_magnitud,
+    mes,
+    dia_mes,
+    hora,
+    promedio_5y,
+    p10,
+    p90
+  FROM dim_baseline_estacional
+")
+
+log_success("✅ Baseline estacional cargado: {format(nrow(baseline_estacional), big.mark=',')} registros")
+
 dbDisconnect(con)
 
 tiempo_carga <- difftime(Sys.time(), inicio_carga, units = "secs")
@@ -178,15 +198,21 @@ datos_completos <- datos_raw %>%
 log_info("Datos tras JOIN: {format(nrow(datos_completos), big.mark=',')} observaciones")
 
 # ==================== MUESTREO ESTRATIFICADO ====================
-log_info("\nAplicando muestreo estratificado ({PORCENTAJE_MUESTRA*100}%)...")
-log_info("Estratificación por: contaminante + año + mes")
+if(PORCENTAJE_MUESTRA < 1.0) {
+  log_info("\nAplicando muestreo estratificado ({PORCENTAJE_MUESTRA*100}%)...")
+  log_info("Estratificación por: contaminante + año + mes")
 
-datos_muestra <- datos_completos %>%
-  group_by(contaminante, año, mes) %>%
-  slice_sample(prop = PORCENTAJE_MUESTRA) %>%
-  ungroup()
+  datos_muestra <- datos_completos %>%
+    group_by(contaminante, año, mes) %>%
+    slice_sample(prop = PORCENTAJE_MUESTRA) %>%
+    ungroup()
 
-log_success("✅ Muestra generada: {format(nrow(datos_muestra), big.mark=',')} observaciones")
+  log_success("✅ Muestra generada: {format(nrow(datos_muestra), big.mark=',')} observaciones")
+} else {
+  log_info("\n📊 USANDO DATASET COMPLETO (100%)")
+  datos_muestra <- datos_completos
+  log_success("✅ Dataset completo: {format(nrow(datos_muestra), big.mark=',')} observaciones")
+}
 
 # Verificar distribución post-muestreo
 dist_muestra <- datos_muestra %>%
@@ -219,16 +245,26 @@ datos_ml <- datos_muestra %>%
     utm_x_norm = (utm_x - MADRID_CENTRO_UTM_X) / 10000,  # En decenas de km
     utm_y_norm = (utm_y - MADRID_CENTRO_UTM_Y) / 10000,
 
-    # Variables temporales cíclicas
-    sin_hora = sin(2 * pi * hora / 24),
-    cos_hora = cos(2 * pi * hora / 24),
-    sin_dia_año = sin(2 * pi * dia_año / 365),
-    cos_dia_año = cos(2 * pi * dia_año / 365),
+    # Variables temporales (sin transformaciones cíclicas - innecesarias para árboles)
     fin_semana = ifelse(dia_semana %in% c(0, 6), 1, 0),  # Domingo=0, Sábado=6
 
-    # Variables meteorológicas derivadas
-    temp_sq = temp_media_c^2,
-    temp_hum_ratio = temp_media_c / (humedad_media_pct + 1),
+    # Variables meteorológicas derivadas (CORREGIDO 2025-10-11)
+    # Temperatura: múltiples transformaciones para capturar no-linealidades
+    temp_abs = abs(temp_media_c),                              # Valor absoluto
+    temp_sign = sign(temp_media_c),                            # Signo (-1, 0, +1)
+    temp_sq = temp_media_c^2,                                  # Cuadrado (mantener compatibilidad)
+    temp_sq_signed = temp_media_c * abs(temp_media_c),        # Cuadrado con signo preservado
+    temp_cubic = temp_media_c^3,                               # Cubo (mantiene signo, amplifica diferencias)
+
+    # Ratios temperatura-humedad (CORREGIDO: offset para evitar divisiones problemáticas)
+    temp_hum_ratio = (temp_media_c + 20) / (humedad_media_pct + 1),  # Temp siempre positiva
+    temp_hum_ratio_inv = humedad_media_pct / (abs(temp_media_c) + 1),  # Ratio inverso
+
+    # Déficit de Presión de Vapor (VPD) - físicamente robusto
+    # Ecuación de Magnus-Tetens/Bolton (1980)
+    e_sat = 6.112 * exp((17.67 * temp_media_c) / (temp_media_c + 243.5)),  # Presión saturación (hPa)
+    e_actual = e_sat * (humedad_media_pct / 100),                          # Presión actual (hPa)
+    vpd = e_sat - e_actual,                                                  # Déficit de vapor (hPa, siempre ≥0)
 
     # Variables condicionales (solo si existen las columnas)
     presion_diff = ifelse("presion_maxima_hpa" %in% names(.) & "presion_minima_hpa" %in% names(.),
@@ -242,31 +278,94 @@ datos_ml <- datos_muestra %>%
     dir_viento = ifelse("dir_viento_grados" %in% names(.), dir_viento_grados, 180),
     viento_x = vel_viento_media_ms * cos(dir_viento * pi / 180),
     viento_y = vel_viento_media_ms * sin(dir_viento * pi / 180)
+  )
+
+# ==================== BASELINE ESTACIONAL (SOLO) ====================
+# CORRECCIÓN: Eliminando TODOS los lags cortos según feedback del usuario
+# ❌ NO lag1, lag3, lag24 (causan overfitting en predicción futura)
+# ✅ SOLO promedio_5y del baseline estacional
+# ✅ Variables espaciales y meteorológicas tendrán que ser las principales
+
+log_info("\n=== AGREGANDO BASELINE ESTACIONAL (SIN LAGS CORTOS) ===")
+log_info("Estrategia: modelo basado en meteorología + ubicación + baseline")
+log_info("  ❌ SIN lag1, lag3, lag24, lag168 (no disponibles en predicción real)")
+log_info("  ✅ promedio_5y del baseline (disponible por fecha/hora)")
+log_info("  ✅ Variables espaciales (utm_x, utm_y, distancia)")
+log_info("  ✅ Variables meteorológicas (temp, viento, humedad, vpd)")
+
+datos_ml <- datos_ml %>%
+  left_join(
+    baseline_estacional %>% select(id_magnitud, mes, dia_mes, hora, promedio_5y),
+    by = c("id_magnitud", "mes", "dia" = "dia_mes", "hora"),
+    relationship = "many-to-one"
   ) %>%
+  mutate(
+    # TIPO DE DÍA (disponible en predicción)
+    tipo_dia_num = case_when(
+      dia_semana %in% c(0, 6) ~ 0,      # Fin de semana
+      dia_semana == 1 ~ 1,              # Lunes
+      dia_semana == 5 ~ 2,              # Viernes
+      TRUE ~ 3                          # Martes-Jueves
+    )
+  ) %>%
+  filter(!is.na(promedio_5y))  # Solo registros con baseline disponible
+
+log_success("✅ Baseline estacional agregado (solo promedio_5y + tipo_dia)")
+log_info("Observaciones con baseline: {format(nrow(datos_ml), big.mark=',')}")
+
+# ==================== SELECT FINAL (SIN LAGS) ====================
+datos_ml <- datos_ml %>%
   select(
     # Variable objetivo
     valor_medio,
     # Identificadores para split por contaminante
     contaminante,
-    # Predictores temporales
-    hora, dia_semana, mes, dia_año, sin_hora, cos_hora,
-    sin_dia_año, cos_dia_año, fin_semana,
+    # Predictores temporales (sin transformaciones cíclicas)
+    hora, dia_semana, mes, dia_año, fin_semana, tipo_dia_num,
     # Predictores meteorológicos básicos
-    temp_media_c, temp_sq, temp_hum_ratio,
-    precipitacion_mm, vel_viento_media_ms,
-    viento_x, viento_y,
-    # Predictores espaciales UTM (cartesianos en metros)
+    temp_media_c, precipitacion_mm, vel_viento_media_ms, viento_x, viento_y,
+    # Predictores temperatura (transformaciones múltiples)
+    temp_abs, temp_sign, temp_sq, temp_sq_signed, temp_cubic,
+    # Predictores humedad-temperatura (ratios y VPD)
+    temp_hum_ratio, temp_hum_ratio_inv, e_sat, e_actual, vpd,
+    # Predictores espaciales UTM (cartesianos en metros) - CRÍTICOS AHORA
     utm_x, utm_y, utm_x_norm, utm_y_norm, dist_centro_madrid,
+    # Baseline estacional (único regresor histórico permitido)
+    promedio_5y,
     # Predictores opcionales (si existen)
     any_of(c("temp_range", "presion_diff", "humedad_diff", "dir_viento",
-             "presion_maxima_hpa", "presion_minima_hpa", "presion_media_hpa",
-             "humedad_maxima_pct", "humedad_minima_pct"))
+             "presion_maxima_hpa", "presion_minima_hpa", "presion_media_hpa"))
   ) %>%
-  filter(complete.cases(.)) %>%
-  # CRÍTICO: Eliminar variables con un solo valor único
-  select(where(~n_distinct(.) > 1))
+  # CRÍTICO: Solo filtrar NAs en variables esenciales
+  filter(!is.na(valor_medio) & !is.na(temp_media_c) & !is.na(utm_x) & !is.na(utm_y) & !is.na(promedio_5y))
 
-log_success("✅ Datos ML preparados: {format(nrow(datos_ml), big.mark=',')} obs, {ncol(datos_ml)-2} predictores")
+# Imputar NAs en columnas opcionales (solo si existen en el dataframe)
+if("temp_range" %in% names(datos_ml)) {
+  datos_ml$temp_range[is.na(datos_ml$temp_range)] <- 10
+}
+if("presion_diff" %in% names(datos_ml)) {
+  datos_ml$presion_diff[is.na(datos_ml$presion_diff)] <- 3
+}
+if("dir_viento" %in% names(datos_ml)) {
+  datos_ml$dir_viento[is.na(datos_ml$dir_viento)] <- 180
+}
+if("presion_maxima_hpa" %in% names(datos_ml)) {
+  datos_ml$presion_maxima_hpa[is.na(datos_ml$presion_maxima_hpa)] <- 1013
+}
+if("presion_minima_hpa" %in% names(datos_ml)) {
+  datos_ml$presion_minima_hpa[is.na(datos_ml$presion_minima_hpa)] <- 1010
+}
+if("presion_media_hpa" %in% names(datos_ml)) {
+  datos_ml$presion_media_hpa[is.na(datos_ml$presion_media_hpa)] <- 1011.5
+}
+
+# CRÍTICO: Eliminar columnas con un solo valor único y verificar que no haya NAs
+datos_ml <- datos_ml %>%
+  select(where(~n_distinct(.) > 1)) %>%
+  # ÚLTIMO FILTRO: Eliminar cualquier fila con NAs restantes
+  filter(complete.cases(.))
+
+log_success("✅ Datos ML preparados SIN LAGS: {format(nrow(datos_ml), big.mark=',')} obs, {ncol(datos_ml)-2} predictores")
 log_info("Estadísticas generales:")
 log_info("  Media concentración: {round(mean(datos_ml$valor_medio), 2)} µg/m³")
 log_info("  Rango: {round(min(datos_ml$valor_medio), 2)} - {round(max(datos_ml$valor_medio), 2)} µg/m³")
@@ -301,6 +400,7 @@ modelos_ica <- list()
 metricas_ica <- list()
 
 # Contaminantes ICA
+# MODO COMPLETO: Entrenar los 5 contaminantes ICA
 contaminantes_ica <- c(
   "Dióxido de Nitrógeno",
   "Partículas < 10 µm",
@@ -308,6 +408,9 @@ contaminantes_ica <- c(
   "Ozono",
   "Dióxido de Azufre"
 )
+
+# NOTA: PM10 ya completado con éxito (R²=0.873)
+# Tiempo estimado restante: ~8-10 horas para los otros 4
 
 # Entrenar cada contaminante
 for(contam in contaminantes_ica) {
@@ -342,7 +445,7 @@ for(contam in contaminantes_ica) {
       method = "ranger",
       trControl = control,
       tuneGrid = tune_grid,
-      num.trees = 200,        # 200 árboles (mejor precisión vs 100)
+      num.trees = 100,        # PRUEBA: 100 árboles (más rápido para test)
       importance = "impurity", # Importancia de variables
       num.threads = 16        # Usar todos los cores
     )
