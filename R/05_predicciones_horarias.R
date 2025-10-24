@@ -300,9 +300,6 @@ cargar_datos_auxiliares <- function() {
     password = db_password
   )
 
-  # Configurar search_path para incluir schema public
-  dbExecute(con, "SET search_path TO public")
-
   # Cargar baseline estacional
   baseline_estacional <- dbGetQuery(con, "
     SELECT
@@ -313,7 +310,7 @@ cargar_datos_auxiliares <- function() {
       promedio_5y,
       p10,
       p90
-    FROM public.dim_baseline_estacional
+    FROM dim_baseline_estacional
   ")
 
   log_success("✅ Baseline estacional cargado: {format(nrow(baseline_estacional), big.mark=',')} registros")
