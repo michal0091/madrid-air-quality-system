@@ -92,7 +92,12 @@ jobs:
           "
       continue-on-error: true
 
+    # TEMPORARILY DISABLED: Models too large for GitHub Actions 7GB RAM limit
+    # NO2 model: 2GB disk → 8.9GB memory (exceeds limit)
+    # TODO: Retrain models with fewer trees (ntree=300 instead of 500)
+    # For now, generate predictions locally and upload to artifacts
     - name: Generate predictions
+      if: false  # Disabled until models are retrained
       timeout-minutes: 30  # Timeout de 30 minutos (antes sin límite)
       run: |
         # Crear directorios necesarios
