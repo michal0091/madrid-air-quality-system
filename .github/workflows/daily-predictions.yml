@@ -185,6 +185,23 @@ jobs:
           "
       continue-on-error: true
 
+    - name: Update baseline tables
+      run: |
+        echo "🔄 Actualizando tablas baseline estacional..."
+        docker run --rm \
+          -v $(pwd):/app \
+          -w /app \
+          -e DB_HOST="${{ secrets.DB_HOST }}" \
+          -e DB_PORT="${{ secrets.DB_PORT }}" \
+          -e DB_NAME="${{ secrets.DB_NAME }}" \
+          -e DB_USER="${{ secrets.DB_USER }}" \
+          -e DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+          ghcr.io/${{ github.repository }}/air-quality-predictor:latest \
+          Rscript R/06_actualizar_baseline.R
+
+        echo "✅ Baseline actualizado (si había datos nuevos)"
+      continue-on-error: true
+
     - name: Generate dashboard data
       run: |
         # Crear todos los directorios que podrían necesitarse
