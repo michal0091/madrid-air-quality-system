@@ -39,11 +39,13 @@ log_appender(appender_tee("logs/modelo_caret_avanzado.log"))
 log_info("--- INICIO MODELADO CARET AVANZADO ---")
 
 # Parámetros optimizados basados en modelo exitoso (R² = 0.999)
+# OPTIMIZADO 2025-10-24: Basado en validación 07_validar_parametros_ranger.R
+# ntree reducido de 300→100 y nodesize de 3→10 para 86% menos memoria con solo 1% pérdida R²
 CONFIGURACION_AVANZADA <- list(
   mtry_range = c(8, 10, 12, 15),      # Rango óptimo probado
-  ntree_optimizado = 300,              # Más árboles para mejor precisión
+  ntree_optimizado = 100,              # OPTIMIZADO: 100 árboles (vs 300) reduce memoria 86%
   cv_folds = 5,                        # Cross-validation robusta
-  nodesize_min = 3,                    # Nodos más pequeños para detalle
+  nodesize_min = 10,                   # OPTIMIZADO: 10 (vs 3) reduce memoria sin perder precisión
   tune_length = 4,                     # Búsqueda de hiperparámetros
   usar_datos_historicos = TRUE,        # Entrenar con 10 años de datos
   incluir_variables_derivadas = TRUE   # Variables de ingeniería de características

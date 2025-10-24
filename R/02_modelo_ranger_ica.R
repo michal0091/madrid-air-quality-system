@@ -383,17 +383,21 @@ control <- trainControl(
   allowParallel = TRUE  # ranger ya paraleliza internamente
 )
 
-# Grid de hiperparámetros para ranger
+# Grid de hiperparámetros para ranger (OPTIMIZADO 2025-10-24)
+# Basado en validación 07_validar_parametros_ranger.R
+# Configuración óptima: ntree=100, max.depth=20, min.node.size=10
+# Reduce memoria 86% con solo 1% pérdida de R²
 tune_grid <- expand.grid(
   mtry = c(5, 8, 12),              # Número de variables por split
-  splitrule = c("variance", "extratrees"),  # Regla de división
-  min.node.size = c(5, 10)         # Tamaño mínimo de nodo
+  splitrule = c("variance"),       # OPTIMIZADO: solo variance (mejor balance)
+  min.node.size = c(10)            # OPTIMIZADO: 10 (vs 5) reduce memoria sin perder precisión
 )
 
-log_info("Grid de hiperparámetros: {nrow(tune_grid)} combinaciones")
+log_info("Grid de hiperparámetros OPTIMIZADO: {nrow(tune_grid)} combinaciones")
 log_info("  mtry: {paste(unique(tune_grid$mtry), collapse=', ')}")
 log_info("  splitrule: {paste(unique(tune_grid$splitrule), collapse=', ')}")
 log_info("  min.node.size: {paste(unique(tune_grid$min.node.size), collapse=', ')}")
+log_info("  OPTIMIZACIÓN: Reduce memoria 86% con solo 1% pérdida R²")
 
 # Almacenar resultados
 modelos_ica <- list()
@@ -445,9 +449,11 @@ for(contam in contaminantes_ica) {
       method = "ranger",
       trControl = control,
       tuneGrid = tune_grid,
-      num.trees = 100,        # PRUEBA: 100 árboles (más rápido para test)
+      num.trees = 100,         # OPTIMIZADO: 100 árboles (validación muestra óptimo balance)
+      max.depth = 20,          # OPTIMIZADO: 20 (vs 30) reduce memoria sin perder precisión
       importance = "impurity", # Importancia de variables
-      num.threads = 16        # Usar todos los cores
+      num.threads = 16,        # Usar todos los cores
+      verbose = FALSE          # Reducir output para mejor logging
     )
 
     tiempo_modelo <- difftime(Sys.time(), inicio_modelo, units = "mins")

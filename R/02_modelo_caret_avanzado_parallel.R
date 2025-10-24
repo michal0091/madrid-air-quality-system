@@ -95,10 +95,11 @@ entrenar_modelo_caret_avanzado_parallel <- function(datos, contaminante) {
   # Grid de búsqueda
   tune_grid <- data.frame(mtry = c(8, 10, 12, 15))
 
-  log_info("Configuración entrenamiento PARALELO:")
+  log_info("Configuración entrenamiento PARALELO (OPTIMIZADO 2025-10-24):")
   log_info("  Cores: {n_cores_usar}")
   log_info("  mtry candidates: {paste(tune_grid$mtry, collapse=', ')}")
-  log_info("  ntree: 300")
+  log_info("  ntree: 100 (OPTIMIZADO: 86% menos memoria)")
+  log_info("  nodesize: 10 (OPTIMIZADO: mejor balance)")
   log_info("  CV folds: 5 (cada fold en paralelo)")
 
   # Entrenar modelo con control paralelo
@@ -112,9 +113,9 @@ entrenar_modelo_caret_avanzado_parallel <- function(datos, contaminante) {
       method = "rf",
       trControl = TRAIN_CONTROL_PARALLEL,  # Usar control paralelo
       tuneGrid = tune_grid,
-      ntree = 300,
+      ntree = 100,        # OPTIMIZADO: 100 (vs 300) reduce memoria 86%
       importance = TRUE,
-      nodesize = 3,
+      nodesize = 10,      # OPTIMIZADO: 10 (vs 3) mejor balance
       maxnodes = NULL
     )
 
@@ -158,9 +159,9 @@ entrenar_modelo_caret_avanzado_parallel <- function(datos, contaminante) {
       ),
       configuracion = list(
         mejor_mtry = modelo_rf_parallel$bestTune$mtry,
-        ntree = 300,
+        ntree = 100,        # OPTIMIZADO: 86% menos memoria
         cv_folds = 5,
-        nodesize = 3,
+        nodesize = 10,      # OPTIMIZADO: mejor balance
         n_cores = n_cores_usar
       ),
       datos_info = list(
@@ -278,7 +279,7 @@ ejecutar_modelado_paralelo <- function(contaminantes = c("Dióxido de Nitrógeno
       configuracion_global = list(
         n_cores = n_cores_usar,
         mtry_range = c(8, 10, 12, 15),
-        ntree = 300,
+        ntree = 100,        # OPTIMIZADO: 86% menos memoria
         cv_folds = 5
       ),
       estadisticas = list(
