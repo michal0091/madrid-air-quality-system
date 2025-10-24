@@ -135,23 +135,32 @@ server <- function(input, output, session) {
   
   # OUTPUTS GENERALES ----
   
-  # Última actualización basada en timestamp de archivos
+  # Última actualización basada en timestamp de generación de predicciones
   output$ultima_actualizacion <- renderText({
     tryCatch({
-      archivos <- c(
-        "data/predicciones_40h_latest.rds", "data/meteo_40h_latest.rds",
-        "../output/predicciones_40h_latest.rds", "../output/meteo_40h_latest.rds"
-      )
-      archivos_existentes <- archivos[file.exists(archivos)]
-      
-      if(length(archivos_existentes) > 0) {
-        timestamps <- sapply(archivos_existentes, function(x) file.info(x)$mtime)
-        ultimo_timestamp <- max(timestamps, na.rm = TRUE)
-        format(ultimo_timestamp, "%d/%m %H:%M")
-      } else {
-        format(Sys.time(), "%d/%m %H:%M")
+      datos <- datos_predicciones()
+
+      # Intentar extraer timestamp de los datos
+      if(!is.null(datos) && "timestamp_prediccion" %in% names(datos)) {
+        # Usar el timestamp de cuándo se generaron las predicciones
+        timestamp_prediccion <- first(datos$timestamp_prediccion)
+        if(!is.na(timestamp_prediccion)) {
+          return(format(timestamp_prediccion, "%d/%m %H:%M"))
+        }
       }
+
+      # Fallback: usar fecha_hora máxima de los datos
+      if(!is.null(datos) && "fecha_hora" %in% names(datos)) {
+        ultima_hora <- max(datos$fecha_hora, na.rm = TRUE)
+        if(!is.na(ultima_hora) && is.finite(ultima_hora)) {
+          return(format(ultima_hora, "%d/%m %H:%M"))
+        }
+      }
+
+      # Último fallback: hora actual
+      format(Sys.time(), "%d/%m %H:%M")
     }, error = function(e) {
+      cat("Error obteniendo timestamp:", e$message, "\n")
       format(Sys.time(), "%d/%m %H:%M")
     })
   })

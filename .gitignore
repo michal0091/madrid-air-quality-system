@@ -42,6 +42,9 @@ data/test/
 *.tiff
 *.svg
 
+# EXCEPTION: Keep app logo for Shiny deployment
+!app/www/kinelytic-header-logo-white.png
+
 # Models (large trained models)
 models/
 !models/.gitkeep
