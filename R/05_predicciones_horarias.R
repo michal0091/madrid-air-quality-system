@@ -300,6 +300,9 @@ cargar_datos_auxiliares <- function() {
     password = db_password
   )
 
+  # Configurar search_path para incluir schema public
+  dbExecute(con, "SET search_path TO public")
+
   # Cargar baseline estacional
   baseline_estacional <- dbGetQuery(con, "
     SELECT
@@ -310,7 +313,7 @@ cargar_datos_auxiliares <- function() {
       promedio_5y,
       p10,
       p90
-    FROM dim_baseline_estacional
+    FROM public.dim_baseline_estacional
   ")
 
   log_success("✅ Baseline estacional cargado: {format(nrow(baseline_estacional), big.mark=',')} registros")
@@ -323,8 +326,8 @@ cargar_datos_auxiliares <- function() {
       fm.id_estacion,
       fm.valor_medido as valor_medio,
       dm.descripcion as contaminante
-    FROM fact_mediciones fm
-    JOIN dim_magnitudes dm ON fm.id_magnitud = dm.id_magnitud
+    FROM public.fact_mediciones fm
+    JOIN public.dim_magnitudes dm ON fm.id_magnitud = dm.id_magnitud
     WHERE fm.fecha_hora >= NOW() - INTERVAL '2 weeks'
       AND fm.valor_medido IS NOT NULL
       AND dm.descripcion IN (
