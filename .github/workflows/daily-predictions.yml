@@ -310,6 +310,15 @@ jobs:
         file.copy('app/', 'deploy_temp/', recursive = TRUE)
         file.copy('R/', 'deploy_temp/', recursive = TRUE)
 
+        # Verificar logo de la app
+        logo_path <- 'deploy_temp/app/www/kinelytic-header-logo-white.png'
+        if(file.exists(logo_path)) {
+          cat('✅ Logo copiado correctamente\n')
+        } else {
+          cat('❌ ERROR: Logo NO encontrado en', logo_path, '\n')
+          cat('⚠️ La app se desplegará sin logo\n')
+        }
+
         # Verificar que se copiaron los mapas animados
         mapas_copiados <- length(list.files('deploy_temp/app/www/mapas_horas/', pattern = '*.png', recursive = TRUE))
         cat('📊 Mapas copiados para deployment:', mapas_copiados, '\n')
