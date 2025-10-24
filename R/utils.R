@@ -200,7 +200,7 @@ obtener_datos_aemet_periodo <- function(
         # Función corregida para manejar las horas de AEMET
         as_POSIXct_data <- function(fecha, hora) {
           if (is.null(hora) || is.na(hora) || hora == "") {
-            return(NA)
+            return(as.POSIXct(NA))  # Devolver POSIXct NA en lugar de logical NA
           }
 
           # Limpiar la hora y manejar casos especiales
@@ -230,7 +230,7 @@ obtener_datos_aemet_periodo <- function(
             # Ya tiene formato HH:MM
             hora_formateada <- hora
           } else {
-            return(NA)
+            return(as.POSIXct(NA))  # Devolver POSIXct NA en lugar de logical NA
           }
 
           fh <- paste(fecha, hora_formateada, sep = " ")
@@ -451,28 +451,44 @@ cargar_meteo_diarios_bulk <- function(datos_meteo, db_conn, tabla_destino = "fac
     }
     return(x)
   }
-  
+
   # Limpiar todas las columnas
   for (col in names(datos_para_db)) {
     datos_para_db[, (col) := limpiar_valor(get(col))]
   }
+
+  # CRÍTICO: Convertir explícitamente campos numéricos a numeric
+  # para evitar que PostgreSQL los infiera como boolean
+  numeric_cols <- c("altitud_m", "temp_media_c", "temp_maxima_c", "temp_minima_c",
+                    "precipitacion_mm", "vel_viento_media_ms", "dir_viento_grados",
+                    "racha_maxima_ms", "presion_maxima_hpa", "presion_minima_hpa",
+                    "humedad_media_pct", "humedad_maxima_pct", "humedad_minima_pct")
+
+  for (col in numeric_cols) {
+    if (col %in% names(datos_para_db)) {
+      datos_para_db[, (col) := as.numeric(get(col))]
+    }
+  }
   
   # Convertir timestamps a character para PostgreSQL
-  timestamp_cols <- c("temp_maxima_hora", "temp_minima_hora", "hora_racha_maxima", 
-                     "hora_presion_maxima", "hora_presion_minima", "hora_humedad_maxima", 
+  # CRÍTICO: Primero convertir a character explícitamente para evitar boolean inference
+  timestamp_cols <- c("temp_maxima_hora", "temp_minima_hora", "hora_racha_maxima",
+                     "hora_presion_maxima", "hora_presion_minima", "hora_humedad_maxima",
                      "hora_humedad_minima")
-  
+
   for (col in timestamp_cols) {
     if (col %in% names(datos_para_db)) {
-      datos_para_db[, (col) := lapply(.SD, function(x) {
-        if (inherits(x, "POSIXct")) {
-          ifelse(is.na(x), NA_character_, as.character(x))
-        } else if (is.character(x)) {
-          ifelse(is.na(x) | x == "", NA_character_, x)
+      # Convertir directamente a character sin usar ifelse() que puede crear logical
+      datos_para_db[, (col) := {
+        val <- get(col)
+        if (inherits(val, "POSIXct")) {
+          as.character(val)
+        } else if (is.character(val)) {
+          val
         } else {
-          NA_character_
+          as.character(NA)
         }
-      }), .SDcols = col]
+      }]
     }
   }
   
