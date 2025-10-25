@@ -1,10 +1,12 @@
 name: Daily Air Quality Predictions
 
 on:
-  schedule:
-    # Ejecutar diariamente a las 4:00 AM UTC (6:00 AM Madrid CEST)
-    - cron: '0 4 * * *'
-  workflow_dispatch:  # Permitir ejecución manual
+  # TEMPORALMENTE DESACTIVADO - 2025-10-25
+  # Reactivar después de migrar a xgboost (modelos más pequeños)
+  # schedule:
+  #   # Ejecutar diariamente a las 4:00 AM UTC (6:00 AM Madrid CEST)
+  #   - cron: '0 4 * * *'
+  workflow_dispatch:  # Permitir solo ejecución manual
 
 env:
   DB_HOST: ${{ secrets.DB_HOST }}
