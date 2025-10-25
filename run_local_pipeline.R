@@ -95,7 +95,7 @@ ejecutar_paso("Datos contaminación tiempo real", "
 
 cat("\n=== PASO 4: GENERAR PREDICCIONES ===\n")
 ejecutar_paso("Predicciones horarias 40h", "
-  source('R/05_predicciones_horarias.R', local = TRUE)
+  source('R/07_predicciones_horarias.R', local = TRUE)
 ")
 
 cat("\n=== PASO 5: GENERAR CONTENIDO DASHBOARD ===\n")
@@ -180,6 +180,6 @@ if(file.exists("app/data/predicciones_40h_latest.rds")) {
 
 cat("\n🎉 === PIPELINE LOCAL COMPLETADO ===\n")
 cat("🚀 Para lanzar la app localmente:\n")
-cat("   source('R/08_dashboard_shiny.R')\n")
-cat("   ejecutar_dashboard(puerto = 3838)\n")
+cat("   # La app Shiny está en app/ - usa:\n")
+cat("   shiny::runApp('app', port = 3838)\n")
 cat("\n📱 La app estará disponible en: http://localhost:3838\n")

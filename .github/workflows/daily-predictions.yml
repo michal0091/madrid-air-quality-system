@@ -119,7 +119,7 @@ jobs:
           -e DB_USER="${{ secrets.DB_USER }}" \
           -e DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
           ghcr.io/${{ github.repository }}/air-quality-predictor:latest \
-          Rscript R/05_predicciones_horarias.R
+          Rscript R/07_predicciones_horarias.R
 
         # Mostrar memoria DESPUÉS de predicciones
         echo "💾 Memoria después de predicciones:"
@@ -204,7 +204,7 @@ jobs:
           -e DB_USER="${{ secrets.DB_USER }}" \
           -e DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
           ghcr.io/${{ github.repository }}/air-quality-predictor:latest \
-          Rscript R/06_actualizar_baseline.R
+          Rscript R/08_actualizar_baseline.R
 
         echo "✅ Baseline actualizado (si había datos nuevos)"
       continue-on-error: true
