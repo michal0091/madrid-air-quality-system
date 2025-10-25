@@ -1,4 +1,4 @@
-# --- SCRIPT 01d: INGESTA DE DATOS METEOROLÓGICOS DIARIOS DE AEMET ---
+# --- SCRIPT 04: INGESTA DE DATOS METEOROLÓGICOS DIARIOS DE AEMET ---
 # --------------------------------------------------------------------
 # Objetivo: Descargar datos climatológicos diarios históricos (10+ años) 
 # de estaciones de Madrid usando la API directa de AEMET.
@@ -13,7 +13,6 @@ library(data.table)
 library(lubridate)
 library(httr2)
 library(jsonlite)
-library(purrr)
 library(logger)
 library(glue)
 
@@ -47,7 +46,8 @@ verificar_trimestres_existentes <- function(db_conn, id_estacion) {
       CEIL(EXTRACT(MONTH FROM fecha) / 3.0) as trimestre
     FROM fact_meteo_diaria 
     WHERE id_estacion_aemet = $1 
-    ORDER BY ano, trimestre"
+    ORDER BY ano, trimestre
+    "
     
     result <- dbGetQuery(db_conn, query, params = list(id_estacion))
     if (nrow(result) > 0) {
@@ -80,28 +80,19 @@ descargar_historico_por_trimestres <- function(api_key, estacion_id, trimestres_
   datos_completos <- list()
   
   for (trimestre_id in trimestres_necesarios) {
-    # Parsear el ID del trimestre (formato: "YYYY-Q1", "YYYY-Q2", etc.)
     partes <- strsplit(trimestre_id, "-Q")[[1]]
     ano <- as.integer(partes[1])
     num_trimestre <- as.integer(partes[2])
     
-    # Calcular fechas de inicio y fin del trimestre
-    meses_trimestre <- list(
-      `1` = c(1, 3),   # Q1: Enero-Marzo
-      `2` = c(4, 6),   # Q2: Abril-Junio  
-      `3` = c(7, 9),   # Q3: Julio-Septiembre
-      `4` = c(10, 12)  # Q4: Octubre-Diciembre
-    )
-    
-    mes_inicio <- meses_trimestre[[num_trimestre]][1]
-    mes_fin <- meses_trimestre[[num_trimestre]][2]
+    # [FIX 4] Lógica de cálculo de meses simplificada
+    mes_inicio <- (num_trimestre - 1) * 3 + 1
+    mes_fin <- num_trimestre * 3
     
     fecha_desde <- as.Date(paste0(ano, "-", sprintf("%02d", mes_inicio), "-01"))
     fecha_hasta <- as.Date(paste0(ano, "-", sprintf("%02d", mes_fin), "-01")) + months(1) - days(1)
 
     if (fecha_desde > Sys.Date()) next
     
-    # Ajustar fecha final si es el futuro
     if (fecha_hasta > Sys.Date()) {
       fecha_hasta <- Sys.Date()
     }
@@ -124,7 +115,6 @@ descargar_historico_por_trimestres <- function(api_key, estacion_id, trimestres_
         log_warn("Sin datos para trimestre {trimestre_id}")
       }
       
-      # Pausa entre trimestres para respetar límites de API
       Sys.sleep(3)
       
     }, error = function(e) {
@@ -142,6 +132,8 @@ descargar_historico_por_trimestres <- function(api_key, estacion_id, trimestres_
 }
 
 # --- 4. SCRIPT PRINCIPAL ----
+db_conn <- NULL
+
 tryCatch({
   
   # --- CONEXIÓN A LA BASE DE DATOS ---
@@ -171,22 +163,24 @@ tryCatch({
     # Verificar qué trimestres ya existen
     trimestres_existentes <- verificar_trimestres_existentes(db_conn, estacion_id)
     
-    # Generar lista de trimestres necesarios
-    trimestres_necesarios <- character(0)
-    for (ano in ANO_INICIO_MINIMO:ANO_FIN) {
-      for (trimestre in 1:4) {
-        trimestre_id <- paste0(ano, "-Q", trimestre)
-        if (!trimestre_id %in% trimestres_existentes) {
-          trimestres_necesarios <- c(trimestres_necesarios, trimestre_id)
-        }
-      }
-    }
+    # 1. Generar todas las combinaciones
+    todos_trimestres_dt <- setDT(expand.grid(
+      ano = ANO_INICIO_MINIMO:ANO_FIN,
+      trimestre = 1:4
+    ))
+    todos_trimestres_dt[, trimestre_id := paste0(ano, "-Q", trimestre)]
+
+    # 2. Convertir existentes a data.table para anti-join
+    trimestres_existentes_dt <- data.table(trimestre_id = trimestres_existentes)
+
+    # 3. Anti-join para encontrar los que faltan
+    trimestres_necesarios_dt <- todos_trimestres_dt[!trimestres_existentes_dt, on = "trimestre_id"]
     
-    # Filtrar trimestres futuros
+    # 4. Obtener vector y filtrar futuros
     trimestre_actual <- paste0(year(Sys.Date()), "-Q", ceiling(month(Sys.Date()) / 3))
-    trimestres_necesarios <- trimestres_necesarios[trimestres_necesarios <= trimestre_actual]
+    trimestres_necesarios <- trimestres_necesarios_dt[trimestre_id <= trimestre_actual, trimestre_id]
+
     
-    trimestres_necesarios <- trimestre_actual
     if (length(trimestres_necesarios) == 0) {
       log_info("Todos los trimestres históricos ya están descargados para {estacion_nombre}")
       next
@@ -207,7 +201,7 @@ tryCatch({
       next
     }
     
-    # Agregar información de ubicación si no está presente
+    # Asignar por referencia
     if (is.na(datos_estacion$ubicacion[1]) || is.null(datos_estacion$ubicacion[1])) {
       datos_estacion[, ubicacion := estacion_nombre]
     }
@@ -220,7 +214,7 @@ tryCatch({
     registros_insertados <- cargar_meteo_diarios_bulk(
       datos_meteo = datos_estacion,
       db_conn = db_conn,
-      tabla_destino = "fact_meteo_diaria",  # Tabla para datos diarios
+      tabla_destino = "fact_meteo_diaria", 
       manejar_duplicados = TRUE
     )
     
@@ -256,6 +250,7 @@ tryCatch({
   
   if (nrow(verificacion) > 0) {
     log_info("Resumen final por estación:")
+    # Este bucle 'for' para logging es aceptable
     for (i in 1:nrow(verificacion)) {
       est <- verificacion[i, ]
       log_info("  {est$id_estacion_aemet} ({est$ubicacion}):")
@@ -265,7 +260,6 @@ tryCatch({
       log_info("    - Precipitación media diaria: {round(est$precip_media_diaria, 1)}mm")
     }
     
-    # Verificación de cobertura temporal por trimestres
     query_cobertura <- "
     SELECT 
       EXTRACT(YEAR FROM fecha) as ano,
@@ -284,7 +278,6 @@ tryCatch({
     
     log_info("Cobertura temporal por trimestres (últimos 5 trimestres):")
     if (nrow(cobertura) > 0) {
-      # Mostrar solo los últimos 5 trimestres para no saturar el log
       ultimos_trimestres <- tail(cobertura, 5)
       for (i in 1:nrow(ultimos_trimestres)) {
         cob <- ultimos_trimestres[i, ]
@@ -293,7 +286,6 @@ tryCatch({
       log_info("  (Total de {nrow(cobertura)} trimestres en la base de datos)")
     }
     
-    # Verificar calidad de datos
     query_calidad <- "
     SELECT 
       COUNT(*) as total_registros,
@@ -323,7 +315,8 @@ tryCatch({
   
 }, finally = {
   log_info("Cerrando conexión a la base de datos.")
-  if (exists("db_conn") && R6::is.R6(db_conn) && dbIsValid(db_conn)) {
+  # Comprobación robusta
+  if (!is.null(db_conn) && R6::is.R6(db_conn) && dbIsValid(db_conn)) {
     DBI::dbDisconnect(db_conn)
   }
 })
