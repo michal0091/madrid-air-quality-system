@@ -40,16 +40,16 @@ tryCatch({
 
   # OBTENER ESTADO ACTUAL DE LA BASE DE DATOS
   log_info("Comprobando qué datos de mes/año ya existen en 'fact_mediciones'...")
-  query_existentes <- 
-    "SELECT 
-      DISTINCT
-      EXTRACT(YEAR FROM fecha_hora) as ano, 
-      EXTRACT(MONTH FROM fecha_hora) as mes 
-      FROM fact_mediciones"
+  query_existentes <- "
+  SELECT 
+  DISTINCT 
+  EXTRACT(YEAR FROM fecha_hora) as ano, 
+  EXTRACT(MONTH FROM fecha_hora) as mes 
+  FROM fact_mediciones"
   
-  datos_existentes_dt <- dbGetQuery(db_conn, query_existentes) |> 
-    setDT()
+  datos_existentes_dt <- dbGetQuery(db_conn, query_existentes) |> setDT()
   
+  # Establecer clave
   setkey(datos_existentes_dt, ano, mes) 
   
   if (nrow(datos_existentes_dt) > 0) {
@@ -66,20 +66,23 @@ tryCatch({
   nodos_descarga <- pagina_html |> html_elements(".asociada-list li.asociada-item")
   
   ficheros_historicos_dt <- rbindlist(lapply(nodos_descarga, function(nodo) {
-    ano_texto <- nodo |> html_element("p.info-title") |> html_text(trim = TRUE)
+    ano_texto <- nodo |> html_element("p.info-title") |>
+      html_text(trim = TRUE) |> 
+      gsub(pattern = "[^0-9]",
+    replacement = "")
     url_relativo <- nodo |> html_element("a") |> html_attr("href")
     
     if (!is.na(ano_texto) && !is.na(url_relativo) && nzchar(ano_texto)) {
-      # Devolvemos un data.table (o list) directamente
       data.table(ano = as.integer(ano_texto), url = url_relativo) 
     } else {
       NULL
     }
   }))
   
+  ficheros_historicos_dt <- ficheros_historicos_dt[!is.na(ano)]
+  
   enlace_actual_rel <- pagina_html |> html_element("a[href*='calidad-aire-horario.csv']") |> html_attr("href")
   
-  # rbindlist es la forma idiomática de data.table para unir
   if (!is.na(enlace_actual_rel)) {
     ficheros_a_procesar_dt <- rbindlist(
       list(data.table(ano = year(today()), url = enlace_actual_rel), ficheros_historicos_dt),
@@ -91,23 +94,27 @@ tryCatch({
   
   ficheros_a_procesar_dt <- ficheros_a_procesar_dt[, url := xml2::url_absolute(url, portal_url)] |>
     unique(by = "url")
+    
+  ficheros_a_procesar_dt <- ficheros_a_procesar_dt[!is.na(ano)]
   
-  log_info("Se encontraron {nrow(ficheros_a_procesar_dt)} ficheros de datos únicos para procesar.")
+  log_info("Se encontraron {nrow(ficheros_a_procesar_dt)} ficheros de datos únicos y válidos para procesar.")
 
   # CARGAR TABLAS DE DIMENSIONES EN MEMORIA
   log_info("Cargando tabla de dimensiones 'dim_estaciones' desde la BBDD...")
-  dim_estaciones <- st_read(db_conn, "dim_estaciones") |> setDT()
+  
+  dim_estaciones <- dbReadTable(db_conn, "dim_estaciones") |> setDT()
   
   mapa_meses <- setNames(1:12, c("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"))
+
+  # BUCLE PRINCIPAL REFACTORIZADO (Enfoque data.table)
   
-  # 1. Clasificar el tipo de fichero por referencia (eficiente)
   ficheros_a_procesar_dt[, tipo_fichero := fcase(
     grepl("\\.zip$", url, ignore.case = TRUE), "zip",
     grepl("\\.csv$", url, ignore.case = TRUE), "csv",
     default = "desconocido"
   )]
 
-  # 2. Definir funciones auxiliares
+  # --- Definición de funciones auxiliares ---
   
   procesar_lote_zip <- function(url_zip, ano_fichero, datos_existentes, mapa_meses, db_conn, dim_estaciones) {
     temp_dir <- tempfile()
@@ -124,6 +131,12 @@ tryCatch({
         mes_actual_abr <- sub("_mo\\d{2}\\.csv$", "", basename(fichero_csv_path))
         mes_actual_num <- mapa_meses[mes_actual_abr]
         
+        if (is.na(mes_actual_num)) {
+            log_warn("No se pudo determinar el mes para: {basename(fichero_csv_path)}")
+            next
+        }
+        
+        # Comprobación de idempotencia (usa clave)
         if (datos_existentes[.(ano_fichero, mes_actual_num), .N > 0]) {
           log_info("OMITIENDO: {mes_actual_abr}/{ano_fichero} ya existe.")
           next
@@ -132,6 +145,7 @@ tryCatch({
         log_info("PROCESANDO: {mes_actual_abr}/{ano_fichero}...")
         dbExecute(db_conn, glue("DELETE FROM fact_mediciones WHERE EXTRACT(YEAR FROM fecha_hora) = {ano_fichero} AND EXTRACT(MONTH FROM fecha_hora) = {mes_actual_num};"))
         
+        # Llamada a la función correcta de utils.R
         procesar_y_cargar_lote_calidad_aire(fread(fichero_csv_path), db_conn, dim_estaciones)
       }
     }, error = function(e) { log_error("Fallo procesando ZIP {basename(url_zip)}: {e$message}") },
@@ -147,6 +161,7 @@ tryCatch({
       meses_en_fichero <- unique(datos_crudos$MES)
       for (mes_del_fichero in meses_en_fichero) {
         
+        # Comprobación de idempotencia (usa clave)
         if (datos_existentes[.(ano_fichero, mes_del_fichero), .N > 0]) {
           log_info("OMITIENDO: Mes {mes_del_fichero}/{ano_fichero} ya existe.")
           next
@@ -154,12 +169,13 @@ tryCatch({
         log_info("PROCESANDO: Mes {mes_del_fichero}/{ano_fichero}...")
         dbExecute(db_conn, glue("DELETE FROM fact_mediciones WHERE EXTRACT(YEAR FROM fecha_hora) = {ano_fichero} AND EXTRACT(MONTH FROM fecha_hora) = {mes_del_fichero};"))
         
+        # Llamada a la función correcta de utils.R
         procesar_y_cargar_lote_calidad_aire(datos_crudos[MES == mes_del_fichero], db_conn, dim_estaciones)
       }
     }, error = function(e) { log_error("Fallo procesando CSV directo {basename(url_csv)}: {e$message}") })
   }
 
-  # 3. Aplicar la lógica "por fila" usando by = 1:nrow()
+  # --- Aplicar la lógica "por fila" ---
   ficheros_a_procesar_dt[tipo_fichero != "desconocido", {
     if (tipo_fichero == "zip") {
       procesar_lote_zip(url, ano, datos_existentes_dt, mapa_meses, db_conn, dim_estaciones)
@@ -167,7 +183,7 @@ tryCatch({
       procesar_lote_csv(url, ano, datos_existentes_dt, db_conn, dim_estaciones)
     }
     NULL # No necesitamos devolver nada
-  }, by = 1:nrow(ficheros_a_procesar_dt)] # El método idiomático de data.table para iterar
+  }, by = .I]
 
 }, error = function(e_main) {
   log_error("Error fatal en el script: {e_main$message}")

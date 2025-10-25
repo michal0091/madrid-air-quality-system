@@ -37,14 +37,14 @@
 #'   datos <- fread("datos_raw.csv")
 #'   conn <- dbConnect(RPostgres::Postgres(), ...)
 #'   dim_est <- dbReadTable(conn, "dim_estaciones")
-#'   procesar_y_cargar_lote(datos, conn, dim_est)
+#'   procesar_y_cargar_lote_calidad_aire(datos, conn, dim_est)
 #' }
 #'
 #' @seealso \code{\link[data.table]{melt}} para la transformación de formato,
 #'   \code{\link[DBI]{dbWriteTable}} para la carga en base de datos
 #'
 #' @export
-procesar_y_cargar_lote <- function(datos_crudos, db_conn, dim_estaciones) {
+procesar_y_cargar_lote_calidad_aire <- function(datos_crudos, db_conn, dim_estaciones) {
   log_info("Iniciando procesamiento de {nrow(datos_crudos)} filas crudas...")
 
   # Lógica de transformación de ancho a largo
