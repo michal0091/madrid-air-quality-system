@@ -11,12 +11,12 @@ source("app/global.R")
 
 cat("=== GENERADOR DE IMÁGENES POR HORA ===\n")
 
-# Cargar datos
-if(file.exists("output/predicciones_40h_latest.rds")) {
-  datos <- readRDS("output/predicciones_40h_latest.rds")
+# Cargar datos (XGBoost nativo)
+if(file.exists("output/predicciones_xgb_nativo_40h_latest.rds")) {
+  datos <- readRDS("output/predicciones_xgb_nativo_40h_latest.rds")
   cat("✅ Datos cargados:", nrow(datos), "filas\n")
 } else {
-  stop("❌ No se encuentra el archivo de predicciones")
+  stop("❌ No se encuentra el archivo de predicciones XGBoost")
 }
 
 # Extraer coordenadas si es sf

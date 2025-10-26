@@ -6,9 +6,9 @@ cargar_datos <- function() {
   tryCatch({
     # Try multiple path combinations
     paths <- c(
-      "output/predicciones_40h_latest.rds",
-      "../output/predicciones_40h_latest.rds",
-      file.path(getwd(), "..", "output", "predicciones_40h_latest.rds")
+      "output/predicciones_xgb_nativo_40h_latest.rds",
+      "../output/predicciones_xgb_nativo_40h_latest.rds",
+      file.path(getwd(), "..", "output", "predicciones_xgb_nativo_40h_latest.rds")
     )
     
     for(path in paths) {

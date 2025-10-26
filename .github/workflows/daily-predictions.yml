@@ -1,12 +1,11 @@
 name: Daily Air Quality Predictions
 
 on:
-  # TEMPORALMENTE DESACTIVADO - 2025-10-25
-  # Reactivar después de migrar a xgboost (modelos más pequeños)
-  # schedule:
-  #   # Ejecutar diariamente a las 4:00 AM UTC (6:00 AM Madrid CEST)
-  #   - cron: '0 4 * * *'
-  workflow_dispatch:  # Permitir solo ejecución manual
+  # REACTIVADO - 2025-10-26: XGBoost modelos pequeños (16 MB total)
+  schedule:
+    # Ejecutar diariamente a las 4:00 AM UTC (6:00 AM Madrid CEST)
+    - cron: '0 4 * * *'
+  workflow_dispatch:  # También permitir ejecución manual
 
 env:
   DB_HOST: ${{ secrets.DB_HOST }}
@@ -37,7 +36,7 @@ jobs:
       run: |
         echo "🐳 Verificando entorno Docker"
         docker run --rm ghcr.io/${{ github.repository }}/air-quality-predictor:latest Rscript -e "
-        critical <- c('ranger', 'sf', 'caret', 'dplyr', 'logger', 'xml2')
+        critical <- c('xgboost', 'sf', 'data.table', 'logger', 'xml2')
         for(pkg in critical) {
           if(requireNamespace(pkg, quietly = TRUE)) {
             cat('✅', pkg, '\n')
@@ -49,18 +48,19 @@ jobs:
         cat('✅ Todos los paquetes críticos disponibles\n')
         "
 
-    - name: Download latest trained models
+    - name: Download latest trained models (XGBoost Native)
       run: |
         # Crear directorio de modelos
         mkdir -p models
 
-        # Descargar modelos RANGER ICA (5 contaminantes)
-        echo "📥 Descargando modelos RANGER ICA..."
-        gh release download --pattern "ranger_ica_*.rds" --dir models/ || echo "No RANGER models found, skipping download"
+        # Descargar modelos XGBoost nativo ICA (5 contaminantes .model + métricas)
+        echo "📥 Descargando modelos XGBoost nativo ICA..."
+        gh release download --pattern "xgboost_nativo_ica_*.model" --dir models/ || echo "No XGBoost models found, skipping"
+        gh release download --pattern "xgboost_nativo_ica_metricas.rds" --dir models/ || echo "No metrics file found, skipping"
 
-        # Verificar que existen los modelos ICA
-        model_count=$(ls -1 models/ranger_ica_*.rds 2>/dev/null | wc -l)
-        echo "✅ Modelos RANGER ICA encontrados: $model_count"
+        # Verificar que existen los modelos ICA (.model files)
+        model_count=$(ls -1 models/xgboost_nativo_ica_*.model 2>/dev/null | wc -l)
+        echo "✅ Modelos XGBoost ICA encontrados: $model_count"
 
         if [ "$model_count" -lt 5 ]; then
           echo "⚠️ Advertencia: Se esperaban 5 modelos ICA (NO2, PM10, PM2.5, O3, SO2)"
@@ -94,13 +94,10 @@ jobs:
           "
       continue-on-error: true
 
-    # TEMPORARILY DISABLED: Models too large for GitHub Actions 7GB RAM limit
-    # NO2 model: 2GB disk → 8.9GB memory (exceeds limit)
-    # TODO: Retrain models with fewer trees (ntree=300 instead of 500)
-    # For now, generate predictions locally and upload to artifacts
-    - name: Generate predictions
-      if: false  # Disabled until models are retrained
-      timeout-minutes: 30  # Timeout de 30 minutos (antes sin límite)
+    # XGBoost Native: Much smaller models (~16 MB total vs 1GB ranger)
+    # Memory efficient: ~200 MB per model vs 4-9 GB for ranger
+    - name: Generate predictions (XGBoost Native)
+      timeout-minutes: 10  # XGBoost es más rápido y eficiente
       run: |
         # Crear directorios necesarios
         mkdir -p output data/realtime logs
@@ -133,8 +130,8 @@ jobs:
           ghcr.io/${{ github.repository }}/air-quality-predictor:latest \
           Rscript -e "
           # Logging básico sin conexión a BD (por ahora)
-          if (file.exists('output/predicciones_40h_latest.rds')) {
-            predicciones <- readRDS('output/predicciones_40h_latest.rds')
+          if (file.exists('output/predicciones_xgb_nativo_40h_latest.rds')) {
+            predicciones <- readRDS('output/predicciones_xgb_nativo_40h_latest.rds')
             cat('✅ Predicciones cargadas:', nrow(predicciones), 'registros\n')
 
             # Generar resumen básico
@@ -237,14 +234,14 @@ jobs:
         # Copiar datos al directorio app para Shiny
         echo "📦 Copiando datos al directorio app..."
         mkdir -p app/data
-        cp output/predicciones_40h_latest.rds app/data/ || echo "Failed to copy predicciones"
+        cp output/predicciones_xgb_nativo_40h_latest.rds app/data/ || echo "Failed to copy predicciones"
         cp output/meteo_40h_latest.rds app/data/ || echo "Failed to copy meteo"
 
         # Verificar archivos generados con Docker
         docker run --rm -v $(pwd):/app -w /app ghcr.io/${{ github.repository }}/air-quality-predictor:latest Rscript -e "
         # Verificar predicciones y archivos dashboard
-        if (file.exists('output/predicciones_40h_latest.rds')) {
-          cat('✅ Predicciones generadas correctamente\n')
+        if (file.exists('output/predicciones_xgb_nativo_40h_latest.rds')) {
+          cat('✅ Predicciones XGBoost generadas correctamente\n')
         } else {
           cat('❌ Error: No se generaron predicciones\n')
         }
@@ -352,11 +349,11 @@ jobs:
           cat('💡 La animación no funcionará en shinyapps.io\n')
         }
 
-        # Copiar datos de predicción más recientes al directorio app
+        # Copiar datos de predicción XGBoost más recientes al directorio app
         if (!dir.exists('deploy_temp/app/data')) dir.create('deploy_temp/app/data')
 
-        if (file.exists('output/predicciones_40h_latest.rds')) {
-          file.copy('output/predicciones_40h_latest.rds', 'deploy_temp/app/data/')
+        if (file.exists('output/predicciones_xgb_nativo_40h_latest.rds')) {
+          file.copy('output/predicciones_xgb_nativo_40h_latest.rds', 'deploy_temp/app/data/')
         }
 
         if (file.exists('output/meteo_40h_latest.rds')) {

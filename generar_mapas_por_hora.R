@@ -39,12 +39,12 @@ source("app/global.R")
 
 cat("=== GENERADOR DE MAPAS POR HORA ===\n")
 
-# Cargar datos DE PREDICCIÓN (objetivo de la app)
-if(file.exists("output/predicciones_40h_latest.rds")) {
-  datos <- readRDS("output/predicciones_40h_latest.rds")
-  cat("✅ Datos de PREDICCIÓN cargados:", nrow(datos), "filas\n")
+# Cargar datos DE PREDICCIÓN XGBoost (objetivo de la app)
+if(file.exists("output/predicciones_xgb_nativo_40h_latest.rds")) {
+  datos <- readRDS("output/predicciones_xgb_nativo_40h_latest.rds")
+  cat("✅ Datos de PREDICCIÓN XGBoost cargados:", nrow(datos), "filas\n")
 } else {
-  stop("❌ No se encuentra el archivo de predicciones")
+  stop("❌ No se encuentra el archivo de predicciones XGBoost")
 }
 
 # Extraer coordenadas si es sf

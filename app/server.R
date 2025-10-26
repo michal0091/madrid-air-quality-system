@@ -11,9 +11,9 @@ server <- function(input, output, session) {
       # Buscar archivo en múltiples ubicaciones posibles
       archivo_predicciones <- NULL
       rutas_posibles <- c(
-        "data/predicciones_40h_latest.rds",
-        "../output/predicciones_40h_latest.rds",
-        "output/predicciones_40h_latest.rds"
+        "data/predicciones_xgb_nativo_40h_latest.rds",
+        "../output/predicciones_xgb_nativo_40h_latest.rds",
+        "output/predicciones_xgb_nativo_40h_latest.rds"
       )
 
       for(ruta in rutas_posibles) {
