@@ -5,8 +5,8 @@ FROM rocker/r-ver:4.5.1
 
 # Metadatos
 LABEL maintainer="Madrid Air Quality System"
-LABEL description="Docker image con R 4.5.1 y dependencias para predicciones de calidad del aire"
-LABEL version="1.0.0"
+LABEL description="Docker image con R 4.5.1 y XGBoost para predicciones de calidad del aire"
+LABEL version="2.0.0"
 
 # Variables de entorno
 ENV DEBIAN_FRONTEND=noninteractive
@@ -39,8 +39,8 @@ COPY install_packages.R /tmp/install_packages.R
 # Instalar paquetes R (esto se cachea si no cambian)
 RUN Rscript /tmp/install_packages.R
 
-# Verificar instalación de paquetes críticos
-RUN Rscript -e "if (!requireNamespace('ranger', quietly = TRUE)) stop('ranger no instalado'); if (!requireNamespace('sf', quietly = TRUE)) stop('sf no instalado'); if (!requireNamespace('caret', quietly = TRUE)) stop('caret no instalado'); cat('✅ Paquetes críticos verificados\n')"
+# Verificar instalación de paquetes críticos (XGBoost version)
+RUN Rscript -e "if (!requireNamespace('xgboost', quietly = TRUE)) stop('xgboost no instalado'); if (!requireNamespace('data.table', quietly = TRUE)) stop('data.table no instalado'); if (!requireNamespace('sf', quietly = TRUE)) stop('sf no instalado'); if (!requireNamespace('logger', quietly = TRUE)) stop('logger no instalado'); cat('✅ Paquetes críticos verificados (XGBoost)\n')"
 
 # Mensaje de éxito
 RUN echo "✅ Docker image construida exitosamente con R 4.5.1 y todas las dependencias"
