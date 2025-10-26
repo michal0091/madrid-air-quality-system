@@ -38,7 +38,6 @@ tryCatch({
   
   dbExecute(con, "DROP TABLE IF EXISTS dim_baseline_estacional CASCADE;")
   
-  # [FIX 6] Query formateada
   query_crear_tabla <- "
   CREATE TABLE dim_baseline_estacional (
     id_magnitud INT,
@@ -226,53 +225,7 @@ tryCatch({
   dbExecute(con, "COMMENT ON VIEW v_baseline_estacional_actual IS 'Vista con baselines + nombres de contaminantes para uso fácil'")
   log_success("✅ Vista v_baseline_estacional_actual creada")
   
-  # ==================== EJEMPLO DE USO ====================
-  log_info("\n=== EJEMPLO DE USO DEL BASELINE (Estilo data.table) ===")
-  
-  cat("
-# Para usar el baseline en tus modelos (¡Estilo data.table!):
 
-library(data.table)
-
-# 1. Cargar baseline y establecer claves (¡rápido!)
-baseline_dt <- setDT(dbGetQuery(con, \"
-  SELECT id_magnitud, mes, dia_mes, hora, promedio_5y, p10, p90
-  FROM dim_baseline_estacional
-\"))
-setkey(baseline_dt, id_magnitud, mes, dia_mes, hora)
-
-# 2. Preparar datos_ml (suponiendo que es un data.table)
-# Crear columnas temporales por referencia (:=)
-datos_ml[, `:=`(
-  mes = month(fecha_hora),
-  dia_mes = mday(fecha_hora),
-  hora = hour(fecha_hora)
-)]
-
-# 3. Realizar un join basado en claves (¡muy eficiente!)
-# Actualiza datos_ml por referencia, añadiendo columnas de baseline_dt
-datos_ml[baseline_dt, on = .(id_magnitud, mes, dia_mes, hora), `:=`(
-  promedio_5y = i.promedio_5y,
-  p10 = i.p10,
-  p90 = i.p90
-)]
-
-# 4. Crear predictores derivados por referencia (:=)
-datos_ml[!is.na(promedio_5y), `:=`(
-  desviacion_baseline = valor_medio - promedio_5y,
-  ratio_baseline = valor_medio / (promedio_5y + 0.1),
-  fuera_rango_normal = fifelse(valor_medio < p10 | valor_medio > p90, 1, 0)
-)]
-
-# 5. Limpiar columnas temporales (opcional)
-datos_ml[, `:=`(mes = NULL, dia_mes = NULL, hora = NULL)]
-
-# Estas 3 nuevas variables son PREDICTORES potentes:
-# - desviacion_baseline: ¿Cuánto se desvía del normal?
-# - ratio_baseline: ¿Qué proporción del normal?
-# - fuera_rango_normal: ¿Es un valor anómalo?
-")
-  
 }, error = function(e) {
   log_error("Error fatal al crear baseline: {e$message}")
 }, finally = {
