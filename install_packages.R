@@ -1,10 +1,11 @@
 #!/usr/bin/env Rscript
 # Install critical packages for Madrid Air Quality System (XGBoost version)
 
-cat("📦 Instalando paquetes críticos para predicciones con XGBoost...\n\n")
+cat("📦 Instalando paquetes críticos para predicciones con XGBoost...\n")
+cat("🚀 Usando binarios precompilados de RSPM (Ubuntu 24.04)\n\n")
 
-# Repositorio CRAN
-options(repos = c(CRAN = "https://cloud.r-project.org"))
+# Los repositorios están configurados en Rprofile.site (RSPM + CRAN)
+# Esto permite usar binarios precompilados = instalación 10x más rápida
 
 # Paquetes críticos en orden de dependencia
 critical_packages <- c(

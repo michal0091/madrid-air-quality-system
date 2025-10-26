@@ -12,6 +12,10 @@ LABEL version="2.0.0"
 ENV DEBIAN_FRONTEND=noninteractive
 ENV RENV_CONFIG_AUTOLOADER_ENABLED=FALSE
 
+# Configurar RSPM para usar binarios precompilados de Ubuntu 24.04 (Noble)
+# Esto reduce el tiempo de build de ~55 min a ~5 min
+RUN echo 'options(repos = c(RSPM = "https://packagemanager.posit.co/cran/__linux__/noble/latest", CRAN = "https://cloud.r-project.org"))' >> /usr/local/lib/R/etc/Rprofile.site
+
 # Instalar dependencias del sistema (igual que en workflow)
 RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
