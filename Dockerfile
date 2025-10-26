@@ -7,6 +7,7 @@ FROM rocker/r-ver:4.5.1
 LABEL maintainer="Madrid Air Quality System"
 LABEL description="Docker image con R 4.5.1 y XGBoost para predicciones de calidad del aire"
 LABEL version="2.0.0"
+LABEL org.opencontainers.image.source="https://github.com/michal0091/madrid-air-quality-system"
 
 # Variables de entorno
 ENV DEBIAN_FRONTEND=noninteractive
