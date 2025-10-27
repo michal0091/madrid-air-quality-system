@@ -38,12 +38,18 @@ critical_packages <- c(
   "mapSpain",
   "tidyterra",
 
-  # Shiny (si se ejecuta dashboard)
+  # Shiny (para dashboard y deployment en shinyapps.io)
   "shiny",
   "shinydashboard",
+  "shinycssloaders",
+  "htmltools",
   "leaflet",
   "plotly",
-  "DT"
+  "DT",
+  "tidyr",
+  "viridis",
+  "yaml",
+  "purrr"
 )
 
 cat("📋 Instalando", length(critical_packages), "paquetes...\n")
