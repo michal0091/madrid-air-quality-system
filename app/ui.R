@@ -55,9 +55,7 @@ ui <- dashboardPage(
           div(class = "metric-box", style = "background: linear-gradient(135deg, #27ae60, #2ecc71); color: white; padding: 12px; text-align: center;",
             tags$i(class = "fa fa-chart-bar", style = "font-size: 16px; margin-right: 6px;"),
             tags$span("Análisis Actual", style = "font-weight: 600;")
-          ),
-          tags$p("Actualiza automáticamente según el contaminante seleccionado", 
-                 style = "color: #b8d6c6; font-size: 11px; text-align: center; margin-top: 8px;")
+          )
         )
       )
     ),
@@ -70,8 +68,8 @@ ui <- dashboardPage(
           tags$strong("Última actualización: "),
           textOutput("ultima_actualizacion", inline = TRUE)
         ),
-        tags$div(style = "margin-bottom: 8px;", 
-          tags$strong("Modelo: "), "CARET Random Forest R² > 92%"
+        tags$div(style = "margin-bottom: 8px;",
+          tags$strong("Modelo: "), "XGBoost Native API"
         ),
         tags$div(
           tags$strong("Estaciones: "), "16 puntos de monitoreo"
@@ -424,7 +422,7 @@ ui <- dashboardPage(
                 <li><strong>Predicciones 40 horas:</strong> Pronósticos horarios para las próximas 40 horas</li>
                 <li><strong>16 Estaciones:</strong> Red de monitoreo distribuida por Madrid</li>
                 <li><strong>5 Contaminantes ICA:</strong> NO₂, PM10, PM2.5, O₃, SO₂</li>
-                <li><strong>Modelos RANGER:</strong> Random Forest con R² > 0.75 (UTM projection)</li>
+                <li><strong>Modelos XGBoost:</strong> Gradient Boosting con GPU (RTX 4070 Ti)</li>
               </ul>
 
               <h4>Contaminantes ICA Monitoreados:</h4>

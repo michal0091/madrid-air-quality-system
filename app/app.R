@@ -12,7 +12,7 @@ source("server.R")
 ejecutar_dashboard <- function(puerto = 3838) {
   cat("🚀 Iniciando Dashboard de Calidad del Aire Madrid\n")
   cat("📍 Accede en: http://localhost:", puerto, "\n")
-  cat("📊 Datos: Predicciones 40h con modelos CARET\n")
+  cat("📊 Datos: Predicciones 40h con XGBoost Native API\n")
   
   shinyApp(ui = ui, server = server, options = list(port = puerto, host = "0.0.0.0"))
 }
